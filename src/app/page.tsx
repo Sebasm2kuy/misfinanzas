@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import * as XLSX from 'xlsx';
 import {
   BarChart3,
   ArrowUpRight,
@@ -26,6 +27,9 @@ import {
   // Menu icon no longer used with bottom nav
   Wallet,
   Activity,
+  Upload,
+  FileSpreadsheet,
+  AlertCircle,
 } from 'lucide-react';
 import {
   BarChart,
@@ -146,6 +150,14 @@ export default function Home() {
   const [savingsAmount, setSavingsAmount] = useState('');
   const [initialBalance, setInitialBalance] = useState('');
   const [newItem, setNewItem] = useState({ name: '', estimatedCost: '' });
+
+  // Excel import state
+  const [showImportExcel, setShowImportExcel] = useState(false);
+  const [importPreview, setImportPreview] = useState<{ date: Date; amount: number; description: string }[]>([]);
+  const [importCategory, setImportCategory] = useState('');
+  const [importError, setImportError] = useState('');
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [editingItemCost, setEditingItemCost] = useState<{ goalId: string; itemId: string; cost: string } | null>(null);
 
   // ── Data loading ──
@@ -308,6 +320,130 @@ export default function Home() {
       await loadAllData();
     } catch {
       toast.error('Error al crear item');
+    }
+  };
+
+  // ── Excel Import ──
+  const handleExcelFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportError('');
+    setImportPreview([]);
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const wb = XLSX.read(arrayBuffer, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows: (string | number | undefined)[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+      if (rows.length < 2) {
+        setImportError('El archivo está vacío o no tiene datos suficientes.');
+        return;
+      }
+
+      const parsed: { date: Date; amount: number; description: string }[] = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const rawDate = row[0];
+        const rawAmount = row[1];
+
+        // Skip header row or empty rows
+        if (!rawDate && !rawAmount) continue;
+        if (typeof rawDate === 'string' && rawDate.toLowerCase().match(/fecha|date|columna|col/)) continue;
+        if (typeof rawAmount === 'string' && rawAmount.toLowerCase().match(/gasto|amount|monto|columna|col/)) continue;
+
+        // Parse date - supports Excel serial dates, Date objects, and string formats
+        let parsedDate: Date | null = null;
+        if (typeof rawDate === 'number') {
+          // Excel serial date
+          parsedDate = new Date((rawDate - 25569) * 86400 * 1000);
+        } else if (rawDate instanceof Date) {
+          parsedDate = rawDate;
+        } else if (typeof rawDate === 'string' && rawDate.trim()) {
+          // Try common date formats
+          const trimmed = rawDate.trim();
+          // dd/mm/yyyy or dd-mm-yyyy
+          const dmyMatch = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+          if (dmyMatch) {
+            const day = parseInt(dmyMatch[1]);
+            const month = parseInt(dmyMatch[2]) - 1;
+            let year = parseInt(dmyMatch[3]);
+            if (year < 100) year += 2000;
+            parsedDate = new Date(year, month, day);
+          } else {
+            const fallback = new Date(trimmed);
+            if (!isNaN(fallback.getTime())) parsedDate = fallback;
+          }
+        }
+
+        // Parse amount
+        let amount = 0;
+        if (typeof rawAmount === 'number') {
+          amount = Math.abs(rawAmount);
+        } else if (typeof rawAmount === 'string') {
+          const cleaned = rawAmount.replace(/[$,.\s]/g, (match, offset, str) => {
+            // Keep only the last period as decimal separator
+            const lastDot = str.lastIndexOf('.');
+            const lastComma = str.lastIndexOf(',');
+            if (match === '.' && offset === lastDot && lastDot > lastComma) return '.';
+            if (match === ',' && offset === lastComma && lastComma > lastDot) return '.';
+            return '';
+          });
+          const num = parseFloat(cleaned);
+          if (!isNaN(num)) amount = Math.abs(num);
+        }
+
+        if (parsedDate && !isNaN(parsedDate.getTime()) && amount > 0) {
+          parsed.push({
+            date: parsedDate,
+            amount: Math.round(amount * 100) / 100,
+            description: `Importado Excel (fila ${i + 1})`,
+          });
+        }
+      }
+
+      if (parsed.length === 0) {
+        setImportError('No se encontraron filas válidas. Asegurate que la columna A tenga fechas y la columna B tenga montos.');
+        return;
+      }
+
+      // Sort by date ascending
+      parsed.sort((a, b) => a.date.getTime() - b.date.getTime());
+      setImportPreview(parsed);
+      setImportCategory(expenseCategories.length > 0 ? expenseCategories[0].id : '');
+    } catch (err) {
+      setImportError('Error al leer el archivo. Asegurate que sea un .xlsx o .csv válido.');
+    }
+
+    // Reset file input
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleImportExcel = async () => {
+    if (importPreview.length === 0 || !importCategory) return;
+    setImporting(true);
+    try {
+      let imported = 0;
+      for (const item of importPreview) {
+        await api.createTransaction({
+          type: 'expense',
+          amount: item.amount,
+          description: item.description,
+          categoryId: importCategory,
+          date: item.date.toISOString(),
+        });
+        imported++;
+      }
+      toast.success(`${imported} gastos importados correctamente`);
+      setShowImportExcel(false);
+      setImportPreview([]);
+      setImportError('');
+      await loadAllData();
+    } catch {
+      toast.error('Error al importar gastos');
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -492,6 +628,7 @@ export default function Home() {
                   filteredTotalExpense={filteredTotalExpense}
                   onAddTx={() => setShowAddTx(true)}
                   onDeleteTx={(id, desc) => setDeleteConfirm({ type: 'transaction', id, name: desc })}
+                  onImportExcel={() => { setShowImportExcel(true); setImportError(''); setImportPreview([]); }}
                 />
               </motion.div>
             )}
@@ -826,6 +963,140 @@ export default function Home() {
             <Button variant="outline" onClick={() => setEditingItemCost(null)}>Cancelar</Button>
             <Button onClick={handleUpdateItemCost}>Guardar</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Excel */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept=".xlsx,.xls,.csv"
+        className="hidden"
+        onChange={handleExcelFile}
+      />
+      <Dialog open={showImportExcel} onOpenChange={(open) => { setShowImportExcel(open); if (!open) { setImportPreview([]); setImportError(''); } }}>
+        <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
+              Importar Gastos desde Excel
+            </DialogTitle>
+            <DialogDescription>
+              Subí un archivo Excel (.xlsx) o CSV con fechas y montos
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 flex-1 overflow-y-auto">
+            {importPreview.length === 0 ? (
+              <>
+                {/* Upload area */}
+                <div
+                  className="border-2 border-dashed rounded-xl p-8 text-center cursor-pointer hover:border-emerald-400 hover:bg-emerald-50/50 transition-all"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                  <p className="font-medium text-sm">Hacé clic para seleccionar archivo</p>
+                  <p className="text-xs text-muted-foreground mt-1">.xlsx, .xls o .csv</p>
+                  <p className="text-xs text-muted-foreground mt-3 bg-muted rounded-lg px-3 py-2 inline-block">
+                    Columna A: Fecha &nbsp;|&nbsp; Columna B: Monto del gasto
+                  </p>
+                </div>
+
+                {importError && (
+                  <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                    <span>{importError}</span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                {/* Category selector */}
+                <div className="space-y-2">
+                  <Label>Categoría para todos los gastos</Label>
+                  <Select value={importCategory} onValueChange={setImportCategory}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar categoría" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {expenseCategories.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          <div className="flex items-center gap-2">
+                            <div className="h-3 w-3 rounded-full" style={{ backgroundColor: c.color }} />
+                            {c.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Preview table */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Vista previa ({importPreview.length} gastos)</Label>
+                    <button
+                      className="text-xs text-muted-foreground hover:text-foreground underline"
+                      onClick={() => { setImportPreview([]); setImportError(''); }}
+                    >
+                      Cambiar archivo
+                    </button>
+                  </div>
+                  <div className="border rounded-lg overflow-hidden max-h-60 overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/50 sticky top-0">
+                        <tr>
+                          <th className="text-left px-3 py-2 font-medium text-xs text-muted-foreground">Fecha</th>
+                          <th className="text-right px-3 py-2 font-medium text-xs text-muted-foreground">Monto</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importPreview.map((item, idx) => (
+                          <tr key={idx} className="border-t last:border-0">
+                            <td className="px-3 py-2 text-xs">{formatDate(item.date.toISOString())}</td>
+                            <td className="px-3 py-2 text-xs text-right font-semibold text-rose-600">{formatCurrency(item.amount)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-muted/30 sticky bottom-0">
+                        <tr className="border-t">
+                          <td className="px-3 py-2 text-xs font-bold">Total</td>
+                          <td className="px-3 py-2 text-xs text-right font-bold text-rose-600">
+                            {formatCurrency(importPreview.reduce((s, i) => s + i.amount, 0))}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {importPreview.length > 0 && (
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button variant="outline" onClick={() => { setShowImportExcel(false); setImportPreview([]); }}>
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleImportExcel}
+                disabled={!importCategory || importing}
+                className="gap-2"
+              >
+                {importing ? (
+                  <>
+                    <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Importando...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4" />
+                    Importar {importPreview.length} gastos
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -1364,6 +1635,7 @@ function TransactionsTab({
   filteredTotalExpense,
   onAddTx,
   onDeleteTx,
+  onImportExcel,
 }: {
   transactions: Transaction[];
   categories: Category[];
@@ -1377,6 +1649,7 @@ function TransactionsTab({
   filteredTotalExpense: number;
   onAddTx: () => void;
   onDeleteTx: (id: string, desc: string) => void;
+  onImportExcel: () => void;
 }) {
   // Generate month options
   const monthOptions: string[] = [];
@@ -1399,10 +1672,16 @@ function TransactionsTab({
           <h2 className="text-2xl font-bold tracking-tight">Transacciones</h2>
           <p className="text-muted-foreground text-sm">Historial de ingresos y gastos</p>
         </div>
-        <Button onClick={onAddTx} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Agregar
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={onImportExcel} className="gap-2">
+            <FileSpreadsheet className="h-4 w-4" />
+            <span className="hidden sm:inline">Importar</span>
+          </Button>
+          <Button onClick={onAddTx} className="gap-2">
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">Agregar</span>
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
