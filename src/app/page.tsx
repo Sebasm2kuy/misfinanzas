@@ -49,6 +49,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   Cell,
+  ReferenceLine,
 } from 'recharts';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -2106,6 +2107,11 @@ function DashboardTab({
         </motion.div>
       </div>
 
+      {/* Daily Food Spending Chart */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
+        <DailyFoodChart transactions={transactions} />
+      </motion.div>
+
       {/* Monthly Averages */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Card>
@@ -2328,6 +2334,152 @@ function DailyFoodIndicator({ transactions }: { transactions: Transaction[] }) {
             ✨ ¡Vas bien! Llevas un promedio de <strong className="text-emerald-600">{formatCurrency(remaining)}</strong> disponible por día.
           </p>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── DAILY FOOD CHART ──────────────────────────────────────────
+function DailyFoodChart({ transactions }: { transactions: Transaction[] }) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const currentMonthKey = year + '-' + String(month + 1).padStart(2, '0');
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const currentDay = Math.min(now.getDate(), daysInMonth);
+
+  const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  const monthLabel = `${monthNames[month]} ${year}`;
+
+  // Find food category
+  const foodCategory = transactions.find(t =>
+    t.type === 'expense' && t.category &&
+    (t.category.name.toLowerCase() === 'comida' || t.category.name.toLowerCase() === 'alimentación')
+  )?.category;
+
+  // Filter food expenses for current month
+  const foodExpenses = transactions.filter(t => {
+    if (t.type !== 'expense') return false;
+    if (foodCategory) {
+      if (t.categoryId !== foodCategory.id) return false;
+    } else {
+      if (!t.category || (t.category.name.toLowerCase() !== 'comida' && t.category.name.toLowerCase() !== 'alimentación')) return false;
+    }
+    const d = new Date(t.date);
+    const m = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    return m === currentMonthKey;
+  });
+
+  // Group by day of month
+  const dayMap = new Map<number, number>();
+  foodExpenses.forEach(t => {
+    const day = new Date(t.date).getDate();
+    dayMap.set(day, (dayMap.get(day) || 0) + t.amount);
+  });
+
+  // Build chart data: day 1 to daysInMonth
+  const chartData = Array.from({ length: daysInMonth }, (_, i) => {
+    const day = i + 1;
+    const amount = dayMap.get(day) || 0;
+    return {
+      day: String(day),
+      gasto: Math.round(amount * 100) / 100,
+      fill: day > currentDay ? '#f1f5f9' : amount === 0 ? '#f1f5f9' : amount > 400 ? '#ef4444' : '#22c55e',
+    };
+  });
+
+  const totalThisMonth = foodExpenses.reduce((s, t) => s + t.amount, 0);
+  const avgDaily = currentDay > 0 ? Math.round(totalThisMonth / currentDay) : 0;
+  const maxSpend = Math.max(...chartData.map(d => d.gasto), 400);
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <span className="text-lg">🍔</span>
+              Gasto Diario en Comida
+            </CardTitle>
+            <CardDescription>{monthLabel} — Dia por dia</CardDescription>
+          </div>
+          <div className="flex items-center gap-3 text-xs">
+            <div className="flex items-center gap-1.5">
+              <div className="h-2.5 w-2.5 rounded-sm bg-emerald-500" />
+              <span className="text-muted-foreground">Bien</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="h-2.5 w-2.5 rounded-sm bg-red-500" />
+              <span className="text-muted-foreground">Exceso</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="h-0.5 w-4 bg-amber-500 border-dashed border-t border-t-amber-500" />
+              <span className="text-muted-foreground">Meta</span>
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {/* Summary badges */}
+        <div className="flex items-center gap-3 mb-4 flex-wrap">
+          <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1.5 text-sm">
+            <span className="text-muted-foreground text-xs">Total mes: </span>
+            <span className="font-bold text-emerald-600">{formatCurrency(totalThisMonth)}</span>
+          </div>
+          <div className="rounded-lg bg-blue-50 dark:bg-blue-950/30 px-3 py-1.5 text-sm">
+            <span className="text-muted-foreground text-xs">Promedio/dia: </span>
+            <span className="font-bold text-blue-600">{formatCurrency(avgDaily)}</span>
+          </div>
+          <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 px-3 py-1.5 text-sm">
+            <span className="text-muted-foreground text-xs">Meta diaria: </span>
+            <span className="font-bold text-amber-600">{formatCurrency(400)}</span>
+          </div>
+        </div>
+
+        {/* Chart */}
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData} margin={{ top: 5, right: 5, left: -15, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-muted" />
+              <XAxis
+                dataKey="day"
+                tick={{ fontSize: 10 }}
+                className="fill-muted-foreground"
+                interval={daysInMonth > 28 ? 1 : 0}
+              />
+              <YAxis
+                tick={{ fontSize: 11 }}
+                className="fill-muted-foreground"
+                tickFormatter={(v) => `$${v}`}
+              />
+              <Tooltip
+                contentStyle={{ borderRadius: '8px', fontSize: '12px', border: '1px solid #e2e8f0' }}
+                formatter={(value: number) => [formatCurrency(value), 'Gasto en comida']}
+                labelFormatter={(label: string) => `Dia ${label}`}
+              />
+              <ReferenceLine
+                y={400}
+                stroke="#f59e0b"
+                strokeDasharray="6 4"
+                strokeWidth={1.5}
+                label={{ value: 'Meta $400', position: 'insideTopRight', fontSize: 10, fill: '#d97706' }}
+              />
+              <Bar dataKey="gasto" radius={[3, 3, 0, 0]} maxBarSize={20}>
+                {chartData.map((entry, index) => (
+                  <Cell key={index} fill={entry.fill} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Footer note */}
+        <p className="text-xs text-muted-foreground text-center mt-2">
+          {currentDay < daysInMonth
+            ? `Mostrando dias 1-${currentDay} (hoy). Dias futuros aparecen vacios.`
+            : `Mes completo. Total: ${formatCurrency(totalThisMonth)} en comida.`
+          }
+        </p>
       </CardContent>
     </Card>
   );
