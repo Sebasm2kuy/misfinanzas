@@ -34,21 +34,20 @@ function now(): string {
 
 // ─── Seed data ───────────────────────────────────────────────
 const DEFAULT_EXPENSE_CATS: Category[] = [
-  { id: 'expense-alimentacion', name: 'Alimentación', icon: 'UtensilsCrossed', color: '#ef4444', type: 'expense', createdAt: now(), updatedAt: now() },
+  { id: 'expense-comida', name: 'Comida', icon: 'UtensilsCrossed', color: '#ef4444', type: 'expense', createdAt: now(), updatedAt: now() },
   { id: 'expense-transporte', name: 'Transporte', icon: 'Car', color: '#f97316', type: 'expense', createdAt: now(), updatedAt: now() },
-  { id: 'expense-vivienda', name: 'Vivienda', icon: 'Home', color: '#eab308', type: 'expense', createdAt: now(), updatedAt: now() },
-  { id: 'expense-entretenimiento', name: 'Entretenimiento', icon: 'Gamepad2', color: '#22c55e', type: 'expense', createdAt: now(), updatedAt: now() },
-  { id: 'expense-salud', name: 'Salud', icon: 'Heart', color: '#06b6d4', type: 'expense', createdAt: now(), updatedAt: now() },
-  { id: 'expense-educacion', name: 'Educación', icon: 'GraduationCap', color: '#8b5cf6', type: 'expense', createdAt: now(), updatedAt: now() },
-  { id: 'expense-ropa', name: 'Ropa', icon: 'Shirt', color: '#ec4899', type: 'expense', createdAt: now(), updatedAt: now() },
-  { id: 'expense-servicios', name: 'Servicios', icon: 'Wifi', color: '#6366f1', type: 'expense', createdAt: now(), updatedAt: now() },
+  { id: 'expense-ute', name: 'UTE', icon: 'Zap', color: '#eab308', type: 'expense', createdAt: now(), updatedAt: now() },
+  { id: 'expense-movistar', name: 'Movistar', icon: 'Smartphone', color: '#06b6d4', type: 'expense', createdAt: now(), updatedAt: now() },
+  { id: 'expense-internet', name: 'Internet', icon: 'Wifi', color: '#8b5cf6', type: 'expense', createdAt: now(), updatedAt: now() },
+  { id: 'expense-antel', name: 'Antel', icon: 'Phone', color: '#ec4899', type: 'expense', createdAt: now(), updatedAt: now() },
+  { id: 'expense-cuota', name: 'Cuota', icon: 'Landmark', color: '#6366f1', type: 'expense', createdAt: now(), updatedAt: now() },
   { id: 'expense-otros', name: 'Otros', icon: 'MoreHorizontal', color: '#6b7280', type: 'expense', createdAt: now(), updatedAt: now() },
 ];
 
 const DEFAULT_INCOME_CATS: Category[] = [
-  { id: 'income-salario', name: 'Salario', icon: 'Banknote', color: '#22c55e', type: 'income', createdAt: now(), updatedAt: now() },
-  { id: 'income-freelance', name: 'Freelance', icon: 'Laptop', color: '#06b6d4', type: 'income', createdAt: now(), updatedAt: now() },
-  { id: 'income-inversiones', name: 'Inversiones', icon: 'TrendingUp', color: '#8b5cf6', type: 'income', createdAt: now(), updatedAt: now() },
+  { id: 'income-liquido', name: 'Líquido', icon: 'Banknote', color: '#22c55e', type: 'income', createdAt: now(), updatedAt: now() },
+  { id: 'income-aguinaldo', name: 'Aguinaldo / Licencia', icon: 'Gift', color: '#06b6d4', type: 'income', createdAt: now(), updatedAt: now() },
+  { id: 'income-freelance', name: 'Freelance', icon: 'Laptop', color: '#8b5cf6', type: 'income', createdAt: now(), updatedAt: now() },
   { id: 'income-otros', name: 'Otros', icon: 'MoreHorizontal', color: '#6b7280', type: 'income', createdAt: now(), updatedAt: now() },
 ];
 
@@ -373,11 +372,13 @@ export const getStats = (): Stats => {
 };
 
 // ─── Seed ────────────────────────────────────────────────────
-export const seedData = (): { success: boolean } => {
-  if (load<boolean>(KEYS.seeded, false)) return { success: true };
+const SEED_VERSION = 2;
 
-  const cats = getCategories();
-  if (cats.length === 0) {
+export const seedData = (): { success: boolean } => {
+  const currentVersion = load<number>(KEYS.seeded, 0);
+
+  // Always update categories when seed version changes
+  if (currentVersion < SEED_VERSION) {
     save(KEYS.categories, [...DEFAULT_EXPENSE_CATS, ...DEFAULT_INCOME_CATS]);
   }
 
@@ -386,6 +387,6 @@ export const seedData = (): { success: boolean } => {
     save(KEYS.goals, DEFAULT_GOALS);
   }
 
-  save(KEYS.seeded, true);
+  save(KEYS.seeded, SEED_VERSION);
   return { success: true };
 };

@@ -1211,10 +1211,21 @@ function DailyFoodIndicator({ transactions }: { transactions: Transaction[] }) {
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const currentDay = Math.min(now.getDate(), daysInMonth);
 
-  // Get food expenses for current month (category id: expense-alimentacion)
+  // Find food category dynamically (matches "Comida" or "Alimentación")
+  const foodCategory = transactions.find(t =>
+    t.type === 'expense' && t.category &&
+    (t.category.name.toLowerCase() === 'comida' || t.category.name.toLowerCase() === 'alimentación')
+  )?.category;
+
+  // Get food expenses for current month using the category id or name match
   const foodExpenses = transactions.filter(t => {
     if (t.type !== 'expense') return false;
-    if (t.categoryId !== 'expense-alimentacion') return false;
+    if (foodCategory) {
+      if (t.categoryId !== foodCategory.id) return false;
+    } else {
+      // Fallback: match by category name
+      if (!t.category || (t.category.name.toLowerCase() !== 'comida' && t.category.name.toLowerCase() !== 'alimentación')) return false;
+    }
     const d = new Date(t.date);
     const m = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
     return m === currentMonth;
