@@ -35,6 +35,10 @@ import {
   EyeOff,
   Cloud,
   CloudOff,
+  Settings as SettingsIcon,
+  Key,
+  AlertTriangle,
+  RotateCcw,
 } from 'lucide-react';
 import {
   BarChart,
@@ -153,6 +157,14 @@ export default function Home() {
   const [showEditBalance, setShowEditBalance] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: string; id: string; name?: string } | null>(null);
   const [showAddItem, setShowAddItem] = useState<string | null>(null);
+
+  // Settings dialog
+  const [showSettings, setShowSettings] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showChangeToken, setShowChangeToken] = useState(false);
+  const [newToken, setNewToken] = useState('');
+  const [newTokenError, setNewTokenError] = useState('');
+  const [newTokenLoading, setNewTokenLoading] = useState(false);
 
   // Form states
   const [newTx, setNewTx] = useState({ type: 'expense' as 'income' | 'expense', amount: '', description: '', categoryId: '', date: new Date() });
@@ -564,6 +576,62 @@ export default function Home() {
   };
 
   // ── Settings ──
+  const handleResetAllData = async () => {
+    // Clear all localStorage data
+    const allKeys = ['mf_settings', 'mf_categories', 'mf_transactions', 'mf_goals', 'mf_seeded', 'mf_auth_token', 'mf_gist_id', 'mf_github_user', 'mf_last_sync'];
+    for (const key of allKeys) {
+      localStorage.removeItem(key);
+    }
+    // Reset state
+    sync.cancelPendingSync();
+    setAuthToken('');
+    setGistId('');
+    setGithubUser('');
+    setIsLoggedIn(false);
+    setSyncStatus('idle');
+    setSettings(null);
+    setTransactions([]);
+    setCategories([]);
+    setGoals([]);
+    setStats(null);
+    setShowResetConfirm(false);
+    setShowSettings(false);
+    toast.success('Todos los datos fueron eliminados. La app se reinicio.');
+  };
+
+  const handleChangeToken = async () => {
+    if (!newToken.trim()) {
+      setNewTokenError('Ingresa un token valido.');
+      return;
+    }
+    setNewTokenLoading(true);
+    setNewTokenError('');
+    try {
+      const username = await sync.getGitHubUser(newToken.trim());
+      const gid = await sync.findOrCreateGist(newToken.trim());
+      sync.setStoredAuth(newToken.trim(), gid, username);
+      setAuthToken(newToken.trim());
+      setGistId(gid);
+      setGithubUser(username);
+      setShowChangeToken(false);
+      setNewToken('');
+      toast.success(`Token actualizado. Conectado como ${username}.`);
+      await loadAndSync();
+    } catch (err: any) {
+      if (err.message === 'TOKEN_INVALID') {
+        setNewTokenError('Token invalido.');
+      } else if (err.message === 'TOKEN_FORBIDDEN') {
+        setNewTokenError('Token sin permisos. Necesitas permisos de gist.');
+      } else if (err.message === 'GIST_CREATE_FORBIDDEN') {
+        setNewTokenError('Sin permisos para crear gists.');
+      } else {
+        setNewTokenError('Error de conexion.');
+      }
+    } finally {
+      setNewTokenLoading(false);
+    }
+  };
+
   const handleUpdateBalance = async () => {
     try {
       await api.updateSettings({ initialBalance: parseFloat(initialBalance) || 0 });
@@ -670,13 +738,18 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Logout */}
-        {githubUser !== 'Offline' && (
-          <Button variant="ghost" size="sm" onClick={handleLogout} className="w-full justify-start gap-2 text-muted-foreground hover:text-red-600 h-9">
-            <LogOut className="h-4 w-4" />
-            Cerrar sesion
+        {/* Settings + Logout */}
+        <div className="flex gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setShowSettings(true)} className="flex-1 justify-start gap-2 text-muted-foreground hover:text-foreground h-9">
+            <SettingsIcon className="h-4 w-4" />
+            Configuracion
           </Button>
-        )}
+          {githubUser !== 'Offline' && (
+            <Button variant="ghost" size="sm" onClick={handleLogout} className="justify-start gap-2 text-muted-foreground hover:text-red-600 h-9 px-3">
+              <LogOut className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -854,6 +927,13 @@ export default function Home() {
           >
             <Target className="h-5 w-5" />
             <span className="text-[10px] font-medium">Metas</span>
+          </button>
+          <button
+            onClick={() => setShowSettings(true)}
+            className="flex flex-col items-center justify-center gap-0.5 w-full h-full transition-colors text-gray-400"
+          >
+            <SettingsIcon className="h-5 w-5" />
+            <span className="text-[10px] font-medium">Ajustes</span>
           </button>
         </div>
       </nav>
@@ -1402,6 +1482,190 @@ export default function Home() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ── Settings Dialog ── */}
+      <Dialog open={showSettings} onOpenChange={setShowSettings}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Configuracion</DialogTitle>
+            <DialogDescription>Ajustes de la aplicacion</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Edit initial balance */}
+            <div
+              className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
+              onClick={() => { setShowSettings(false); setInitialBalance(String(settings?.initialBalance ?? 0)); setShowEditBalance(true); }}
+            >
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+                  <DollarSign className="h-4 w-4 text-emerald-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Saldo inicial</p>
+                  <p className="text-xs text-muted-foreground">Cambiar el monto inicial</p>
+                </div>
+              </div>
+              <span className="text-sm font-medium">{formatCurrency(settings?.initialBalance ?? 0)}</span>
+            </div>
+
+            {/* Change token (only for logged-in users) */}
+            {githubUser !== 'Offline' && (
+              <div
+                className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
+                onClick={() => { setShowSettings(false); setShowChangeToken(true); setNewToken(''); setNewTokenError(''); }}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                    <Key className="h-4 w-4 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Cambiar token</p>
+                    <p className="text-xs text-muted-foreground">Actualizar token de GitHub ({githubUser})</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Force sync */}
+            {githubUser !== 'Offline' && (
+              <div
+                className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
+                onClick={() => { setShowSettings(false); handleForceSync(); }}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                    <RefreshCw className="h-4 w-4 text-amber-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Forzar sincronizacion</p>
+                    <p className="text-xs text-muted-foreground">Subir datos ahora a GitHub</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Logout (only for logged-in users) */}
+            {githubUser !== 'Offline' && (
+              <div
+                className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
+                onClick={() => { setShowSettings(false); handleLogout(); }}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+                    <LogOut className="h-4 w-4 text-orange-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Cerrar sesion</p>
+                    <p className="text-xs text-muted-foreground">Desconectar sync con GitHub</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <Separator />
+
+            {/* Reset all data */}
+            <div
+              className="flex items-center justify-between p-3 rounded-lg border border-red-200 hover:bg-red-50 dark:hover:bg-red-950/20 cursor-pointer transition-colors"
+              onClick={() => { setShowSettings(false); setShowResetConfirm(true); }}
+            >
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-lg bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                  <RotateCcw className="h-4 w-4 text-red-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-red-600">Restaurar app a cero</p>
+                  <p className="text-xs text-muted-foreground">Eliminar todos los datos y configuracion</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Reset Confirm Dialog ── */}
+      <Dialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              Eliminar todos los datos
+            </DialogTitle>
+            <DialogDescription>
+              Esta accion no se puede deshacer. Se van a eliminar:
+            </DialogDescription>
+          </DialogHeader>
+          <div className="bg-red-50 dark:bg-red-950/20 rounded-lg p-3 space-y-1 text-sm text-red-700 dark:text-red-400">
+            <p>Todas las transacciones (ingresos y gastos)</p>
+            <p>Todas las metas y sus items</p>
+            <p>Saldo inicial y categorias personalizadas</p>
+            <p>Token de GitHub y sesion</p>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            La app va a volver al estado inicial, como recien instalada.
+          </p>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setShowResetConfirm(false)}>Cancelar</Button>
+            <Button variant="destructive" onClick={handleResetAllData} className="gap-2">
+              <RotateCcw className="h-4 w-4" />
+              Si, eliminar todo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Change Token Dialog ── */}
+      <Dialog open={showChangeToken} onOpenChange={setShowChangeToken}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Key className="h-5 w-5 text-blue-600" />
+              Cambiar token de GitHub
+            </DialogTitle>
+            <DialogDescription>
+              Ingresa tu nuevo token de GitHub. El anterior va a dejar de funcionar.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-token">Nuevo Token</Label>
+              <div className="relative">
+                <Input
+                  id="new-token"
+                  type="password"
+                  placeholder="ghp_xxxxxxxxxxxx"
+                  value={newToken}
+                  onChange={(e) => { setNewToken(e.target.value); setNewTokenError(''); }}
+                  className="pr-10 font-mono text-sm"
+                  onKeyDown={(e) => { if (e.key === 'Enter' && newToken.trim()) handleChangeToken(); }}
+                />
+              </div>
+            </div>
+            {newTokenError && (
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>{newTokenError}</span>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowChangeToken(false)}>Cancelar</Button>
+            <Button onClick={handleChangeToken} disabled={!newToken.trim() || newTokenLoading} className="gap-2 bg-blue-600 hover:bg-blue-700">
+              {newTokenLoading ? (
+                <>
+                  <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Verificando...
+                </>
+              ) : (
+                <>
+                  <Key className="h-4 w-4" />
+                  Guardar token
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
