@@ -695,7 +695,23 @@ export default function Home() {
       setAuthToken(syncSetupToken.trim());
       setGistId(gid);
       setGithubUser(username);
-      // Sync local data to gist immediately
+
+      // CRITICAL: First try to LOAD remote data before saving local
+      const remoteData = await sync.loadFromGist(syncSetupToken.trim(), gid);
+      if (remoteData) {
+        // Check if remote has actual data (not empty)
+        const hasRemoteData = Object.values(remoteData).some(v => v !== null && v !== undefined);
+        if (hasRemoteData) {
+          sync.applyRemoteData(remoteData);
+          await loadAllData();
+          toast.success(`Datos restaurados desde GitHub como ${username}.`);
+          setShowSyncSetup(false);
+          setSyncSetupToken('');
+          return;
+        }
+      }
+
+      // No remote data or empty gist → push local data
       const data = sync.gatherLocalData();
       await sync.saveToGist(syncSetupToken.trim(), gid, data);
       setShowSyncSetup(false);
@@ -1019,6 +1035,7 @@ export default function Home() {
                   onViewAllTx={() => setActiveTab('transactions')}
                   onAddIncome={openAddIncome}
                   onAddExpense={openAddExpense}
+                  onSetupSync={() => { setShowSyncSetup(true); setSyncSetupToken(''); setSyncSetupError(''); }}
                 />
               </motion.div>
             )}
@@ -1778,7 +1795,7 @@ export default function Home() {
               Sincronizar entre dispositivos
             </DialogTitle>
             <DialogDescription>
-              Conectá con GitHub para sincronizar tus datos entre el celular y la PC.
+              Conectá con GitHub para respaldar tus datos. Si ya configuraste sync antes, se restauraran automaticamente.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1792,6 +1809,7 @@ export default function Home() {
                 onChange={(e) => { setSyncSetupToken(e.target.value); setSyncSetupError(''); }}
                 className="font-mono text-sm"
                 onKeyDown={(e) => { if (e.key === 'Enter' && syncSetupToken.trim()) handleSetupSync(); }}
+                autoFocus
               />
             </div>
             {syncSetupError && (
@@ -1809,6 +1827,10 @@ export default function Home() {
                 <li>Copia el token que empieza con <code className="bg-muted px-1 rounded">ghp_</code></li>
               </ol>
             </div>
+            <div className="rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-950/30 p-3 text-xs text-blue-800 dark:text-blue-300">
+              <p className="font-medium mb-1">Si ya tenias sync configurado:</p>
+              <p>Usa el mismo token y tus datos se restauraran automaticamente desde GitHub. No vas a perder nada.</p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowSyncSetup(false)}>Cancelar</Button>
@@ -1821,7 +1843,7 @@ export default function Home() {
               ) : (
                 <>
                   <Cloud className="h-4 w-4" />
-                  Conectar sync
+                  Conectar y restaurar
                 </>
               )}
             </Button>
@@ -1846,6 +1868,7 @@ function DashboardTab({
   onViewAllTx,
   onAddIncome,
   onAddExpense,
+  onSetupSync,
 }: {
   settings: Settings | null;
   stats: Stats | null;
@@ -1859,6 +1882,7 @@ function DashboardTab({
   onViewAllTx: () => void;
   onAddIncome: () => void;
   onAddExpense: () => void;
+  onSetupSync: () => void;
 }) {
   const isBalanceZero = !settings || settings.initialBalance === 0;
   const recentTransactions = transactions.slice(0, 5);
@@ -1892,6 +1916,37 @@ function DashboardTab({
           </Button>
         </div>
       </div>
+
+      {/* Sync Warning Banner */}
+      {!githubUser && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.02 }}
+        >
+          <Card className="border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30">
+            <CardContent className="p-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="h-10 w-10 rounded-full bg-amber-100 dark:bg-amber-900 flex items-center justify-center shrink-0">
+                  <CloudOff className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-medium text-sm text-amber-900 dark:text-amber-200">Tus datos NO estan respaldados</p>
+                  <p className="text-xs text-amber-700 dark:text-amber-400 truncate">Si borras el cache del navegador perdes todo. Conecta con GitHub para guardar.</p>
+                </div>
+              </div>
+              <Button
+                onClick={onSetupSync}
+                size="sm"
+                className="bg-amber-600 hover:bg-amber-700 text-white shrink-0"
+              >
+                <Cloud className="h-4 w-4 mr-1.5" />
+                Conectar
+              </Button>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
       {/* Quick Action Buttons - Gasto & Ingreso */}
       <motion.div
