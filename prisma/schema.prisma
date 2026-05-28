@@ -1,0 +1,62 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Settings {
+  id           String @id @default("main")
+  initialBalance Float @default(0)
+  currency     String @default("USD")
+  updatedAt    DateTime @updatedAt
+}
+
+model Category {
+  id           String        @id @default(cuid())
+  name         String
+  icon         String        @default("Tag")
+  color        String        @default("#6b7280")
+  type         String        @default("expense") // "income" or "expense"
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  transactions Transaction[]
+}
+
+model Transaction {
+  id          String   @id @default(cuid())
+  type        String   // "income" or "expense"
+  amount      Float
+  description String
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Goal {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  targetAmount Float
+  savedAmount Float    @default(0)
+  deadline    DateTime?
+  color       String   @default("#6366f1")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  items       GoalItem[]
+}
+
+model GoalItem {
+  id          String  @id @default(cuid())
+  goalId      String
+  goal        Goal    @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  name        String
+  estimatedCost Float
+  actualCost  Float   @default(0)
+  isPaid      Boolean @default(false)
+  notes       String?
+}

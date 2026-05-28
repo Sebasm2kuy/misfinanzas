@@ -1,0 +1,1610 @@
+'use client';
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  BarChart3,
+  ArrowUpRight,
+  ArrowDownRight,
+  Plus,
+  Trash2,
+  Search,
+  Filter,
+  TrendingUp,
+  TrendingDown,
+  Calendar,
+  Target,
+  DollarSign,
+  PiggyBank,
+  ChevronDown,
+  ChevronUp,
+  Check,
+  X,
+  Star,
+  Crown,
+  PartyPopper,
+  Menu,
+  Wallet,
+  Activity,
+} from 'lucide-react';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+} from 'recharts';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
+import { toast } from 'sonner';
+
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Separator } from '@/components/ui/separator';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
+import { Textarea } from '@/components/ui/textarea';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Checkbox } from '@/components/ui/checkbox';
+import { DynamicIcon } from '@/components/dynamic-icon';
+
+import { Settings, Transaction, Category, Goal, GoalItem, Stats } from '@/lib/types';
+import * as api from '@/lib/api';
+import { formatCurrency, formatDate, formatDateShort, formatPercent, getMonthYear } from '@/lib/format';
+
+// ─── Helpers ───────────────────────────────────────────────────
+const FADE_IN = {
+  initial: { opacity: 0, y: 12 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -12 },
+  transition: { duration: 0.3 },
+};
+
+const GOAL_COLORS = [
+  '#ec4899', '#8b5cf6', '#06b6d4', '#22c55e', '#f97316',
+  '#ef4444', '#eab308', '#6366f1', '#14b8a6', '#f43f5e',
+];
+
+// ─── Main App ──────────────────────────────────────────────────
+export default function Home() {
+  // ── State ──
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'transactions' | 'goals'>('dashboard');
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Transaction filters
+  const [txFilterType, setTxFilterType] = useState<'all' | 'income' | 'expense'>('all');
+  const [txFilterMonth, setTxFilterMonth] = useState('');
+  const [txSearch, setTxSearch] = useState('');
+
+  // Expanded goal
+  const [expandedGoal, setExpandedGoal] = useState<string | null>(null);
+
+  // Dialogs
+  const [showAddTx, setShowAddTx] = useState(false);
+  const [showAddGoal, setShowAddGoal] = useState(false);
+  const [showAddSavings, setShowAddSavings] = useState<Goal | null>(null);
+  const [showEditBalance, setShowEditBalance] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: string; id: string; name?: string } | null>(null);
+  const [showAddItem, setShowAddItem] = useState<string | null>(null);
+
+  // Form states
+  const [newTx, setNewTx] = useState({ type: 'expense' as 'income' | 'expense', amount: '', description: '', categoryId: '', date: new Date() });
+  const [newGoal, setNewGoal] = useState({ name: '', description: '', targetAmount: '', deadline: undefined as Date | undefined, color: '#6366f1' });
+  const [savingsAmount, setSavingsAmount] = useState('');
+  const [initialBalance, setInitialBalance] = useState('');
+  const [newItem, setNewItem] = useState({ name: '', estimatedCost: '' });
+  const [editingItemCost, setEditingItemCost] = useState<{ goalId: string; itemId: string; cost: string } | null>(null);
+
+  // ── Data loading ──
+  const loadAllData = useCallback(async () => {
+    try {
+      const [s, t, c, g, st] = await Promise.all([
+        api.getSettings(),
+        api.getTransactions(),
+        api.getCategories(),
+        api.getGoals(),
+        api.getStats(),
+      ]);
+      setSettings(s);
+      setTransactions(t);
+      setCategories(c);
+      setGoals(g);
+      setStats(st);
+    } catch {
+      toast.error('Error al cargar los datos');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        await api.seedData();
+      } catch {
+        // Seed may already exist
+      }
+      await loadAllData();
+    })();
+  }, [loadAllData]);
+
+  // ── Transaction CRUD ──
+  const handleCreateTx = async () => {
+    if (!newTx.amount || !newTx.description) {
+      toast.error('Completa todos los campos requeridos');
+      return;
+    }
+    try {
+      await api.createTransaction({
+        type: newTx.type,
+        amount: parseFloat(newTx.amount),
+        description: newTx.description,
+        categoryId: newTx.categoryId || undefined,
+        date: newTx.date.toISOString(),
+      });
+      toast.success('Transacción creada');
+      setShowAddTx(false);
+      setNewTx({ type: 'expense', amount: '', description: '', categoryId: '', date: new Date() });
+      await loadAllData();
+    } catch {
+      toast.error('Error al crear transacción');
+    }
+  };
+
+  const handleDeleteTx = async (id: string) => {
+    try {
+      await api.deleteTransaction(id);
+      toast.success('Transacción eliminada');
+      setDeleteConfirm(null);
+      await loadAllData();
+    } catch {
+      toast.error('Error al eliminar');
+    }
+  };
+
+  // ── Goal CRUD ──
+  const handleCreateGoal = async () => {
+    if (!newGoal.name || !newGoal.targetAmount) {
+      toast.error('Completa nombre y monto objetivo');
+      return;
+    }
+    try {
+      await api.createGoal({
+        name: newGoal.name,
+        description: newGoal.description || undefined,
+        targetAmount: parseFloat(newGoal.targetAmount),
+        deadline: newGoal.deadline?.toISOString(),
+        color: newGoal.color,
+      });
+      toast.success('Meta creada');
+      setShowAddGoal(false);
+      setNewGoal({ name: '', description: '', targetAmount: '', deadline: undefined, color: '#6366f1' });
+      await loadAllData();
+    } catch {
+      toast.error('Error al crear meta');
+    }
+  };
+
+  const handleAddSavings = async () => {
+    if (!showAddSavings || !savingsAmount) return;
+    try {
+      const newSaved = showAddSavings.savedAmount + parseFloat(savingsAmount);
+      await api.updateGoal({ id: showAddSavings.id, savedAmount: newSaved });
+      toast.success('Ahorro agregado');
+      setShowAddSavings(null);
+      setSavingsAmount('');
+      await loadAllData();
+    } catch {
+      toast.error('Error al agregar ahorro');
+    }
+  };
+
+  const handleDeleteGoal = async (id: string) => {
+    try {
+      await api.deleteGoal(id);
+      toast.success('Meta eliminada');
+      setDeleteConfirm(null);
+      await loadAllData();
+    } catch {
+      toast.error('Error al eliminar meta');
+    }
+  };
+
+  // ── Goal Item CRUD ──
+  const handleToggleItemPaid = async (goalId: string, item: GoalItem) => {
+    try {
+      await api.updateGoalItem(goalId, {
+        itemId: item.id,
+        isPaid: !item.isPaid,
+      });
+      toast.success(item.isPaid ? 'Item desmarcado' : 'Item marcado como pagado');
+      await loadAllData();
+    } catch {
+      toast.error('Error al actualizar item');
+    }
+  };
+
+  const handleUpdateItemCost = async () => {
+    if (!editingItemCost) return;
+    try {
+      const item = goals.find(g => g.id === editingItemCost.goalId)?.items.find(i => i.id === editingItemCost.itemId);
+      if (!item) return;
+      await api.updateGoalItem(editingItemCost.goalId, {
+        itemId: editingItemCost.itemId,
+        actualCost: parseFloat(editingItemCost.cost),
+        isPaid: true,
+      });
+      toast.success('Costo actualizado');
+      setEditingItemCost(null);
+      await loadAllData();
+    } catch {
+      toast.error('Error al actualizar costo');
+    }
+  };
+
+  const handleCreateItem = async () => {
+    if (!showAddItem || !newItem.name || !newItem.estimatedCost) return;
+    try {
+      await api.createGoalItem(showAddItem, {
+        name: newItem.name,
+        estimatedCost: parseFloat(newItem.estimatedCost),
+      });
+      toast.success('Item agregado');
+      setShowAddItem(null);
+      setNewItem({ name: '', estimatedCost: '' });
+      await loadAllData();
+    } catch {
+      toast.error('Error al crear item');
+    }
+  };
+
+  const handleDeleteItem = async (goalId: string, itemId: string) => {
+    try {
+      await api.deleteGoalItem(goalId, itemId);
+      toast.success('Item eliminado');
+      await loadAllData();
+    } catch {
+      toast.error('Error al eliminar item');
+    }
+  };
+
+  // ── Settings ──
+  const handleUpdateBalance = async () => {
+    try {
+      await api.updateSettings({ initialBalance: parseFloat(initialBalance) || 0 });
+      toast.success('Saldo inicial actualizado');
+      setShowEditBalance(false);
+      await loadAllData();
+    } catch {
+      toast.error('Error al actualizar saldo');
+    }
+  };
+
+  // ── Filtered transactions ──
+  const filteredTransactions = transactions.filter((t) => {
+    if (txFilterType !== 'all' && t.type !== txFilterType) return false;
+    if (txSearch && !t.description.toLowerCase().includes(txSearch.toLowerCase())) return false;
+    if (txFilterMonth) {
+      const tMonth = getMonthYear(new Date(t.date));
+      if (tMonth !== txFilterMonth) return false;
+    }
+    return true;
+  });
+
+  const filteredTotalIncome = filteredTransactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  const filteredTotalExpense = filteredTransactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+
+  const expenseCategories = categories.filter(c => c.type === 'expense');
+  const incomeCategories = categories.filter(c => c.type === 'income');
+  const txCategories = newTx.type === 'income' ? incomeCategories : expenseCategories;
+
+  const currentBalance = settings
+    ? settings.initialBalance + (stats?.balance ?? 0)
+    : 0;
+
+  // ── Sidebar Navigation ──
+  const navItems = [
+    { id: 'dashboard' as const, label: 'Dashboard', icon: BarChart3 },
+    { id: 'transactions' as const, label: 'Transacciones', icon: Activity },
+    { id: 'goals' as const, label: 'Metas', icon: Target },
+  ];
+
+  const SidebarContent = () => (
+    <div className="flex flex-col h-full">
+      <div className="p-6 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
+            <Wallet className="h-5 w-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold tracking-tight">MiFinanzas</h1>
+            <p className="text-xs text-muted-foreground">Control personal</p>
+          </div>
+        </div>
+      </div>
+      <Separator />
+      <nav className="flex-1 p-3 space-y-1">
+        {navItems.map((item) => (
+          <Button
+            key={item.id}
+            variant={activeTab === item.id ? 'secondary' : 'ghost'}
+            className={`w-full justify-start gap-3 h-11 px-4 font-medium transition-all ${
+              activeTab === item.id ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : ''
+            }`}
+            onClick={() => setActiveTab(item.id)}
+          >
+            <item.icon className="h-4 w-4" />
+            {item.label}
+          </Button>
+        ))}
+      </nav>
+      <div className="p-4 border-t">
+        <div className="rounded-xl bg-gradient-to-br from-emerald-500/10 to-teal-500/10 p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <PiggyBank className="h-4 w-4 text-emerald-600" />
+            <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">Saldo Actual</span>
+          </div>
+          <p className="text-lg font-bold text-emerald-700 dark:text-emerald-300">
+            {loading ? <Skeleton className="h-6 w-24" /> : formatCurrency(currentBalance)}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── Loading state ──
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center mx-auto mb-4 animate-pulse">
+            <Wallet className="h-6 w-6 text-white" />
+          </div>
+          <p className="text-muted-foreground text-sm">Cargando MiFinanzas...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── RENDER ───────────────────────────────────────────────
+  return (
+    <div className="min-h-screen flex bg-slate-50">
+      {/* Desktop Sidebar */}
+      <aside className="hidden lg:flex w-64 border-r bg-white flex-col fixed h-screen">
+        <SidebarContent />
+      </aside>
+
+      {/* Mobile Sheet */}
+      <Sheet>
+        <SheetTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="fixed top-4 left-4 z-50 lg:hidden bg-white shadow-md rounded-xl border"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+        </SheetTrigger>
+        <SheetContent side="left" className="w-64 p-0">
+          <SidebarContent />
+        </SheetContent>
+      </Sheet>
+
+      {/* Main Content */}
+      <main className="flex-1 lg:ml-64 min-h-screen">
+        <div className="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 pt-16 lg:pt-8">
+          <AnimatePresence mode="wait">
+            {activeTab === 'dashboard' && (
+              <motion.div key="dashboard" {...FADE_IN}>
+                <DashboardTab
+                  settings={settings}
+                  stats={stats}
+                  transactions={transactions}
+                  categories={categories}
+                  goals={goals}
+                  currentBalance={currentBalance}
+                  onEditBalance={() => {
+                    setInitialBalance(String(settings?.initialBalance ?? 0));
+                    setShowEditBalance(true);
+                  }}
+                  onViewAllTx={() => setActiveTab('transactions')}
+                />
+              </motion.div>
+            )}
+            {activeTab === 'transactions' && (
+              <motion.div key="transactions" {...FADE_IN}>
+                <TransactionsTab
+                  transactions={filteredTransactions}
+                  categories={categories}
+                  txFilterType={txFilterType}
+                  setTxFilterType={setTxFilterType}
+                  txFilterMonth={txFilterMonth}
+                  setTxFilterMonth={setTxFilterMonth}
+                  txSearch={txSearch}
+                  setTxSearch={setTxSearch}
+                  filteredTotalIncome={filteredTotalIncome}
+                  filteredTotalExpense={filteredTotalExpense}
+                  onAddTx={() => setShowAddTx(true)}
+                  onDeleteTx={(id, desc) => setDeleteConfirm({ type: 'transaction', id, name: desc })}
+                />
+              </motion.div>
+            )}
+            {activeTab === 'goals' && (
+              <motion.div key="goals" {...FADE_IN}>
+                <GoalsTab
+                  goals={goals}
+                  expandedGoal={expandedGoal}
+                  setExpandedGoal={setExpandedGoal}
+                  onAddGoal={() => setShowAddGoal(true)}
+                  onAddSavings={(g) => {
+                    setShowAddSavings(g);
+                    setSavingsAmount('');
+                  }}
+                  onDeleteGoal={(id, name) => setDeleteConfirm({ type: 'goal', id, name })}
+                  onToggleItem={handleToggleItemPaid}
+                  onEditItemCost={(goalId, itemId, cost) => setEditingItemCost({ goalId, itemId, cost: String(cost) })}
+                  onDeleteItem={(goalId, itemId) => setDeleteConfirm({ type: 'goalItem', id: itemId, name: goalId + ':' + itemId })}
+                  onAddItem={(goalId) => {
+                    setShowAddItem(goalId);
+                    setNewItem({ name: '', estimatedCost: '' });
+                  }}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </main>
+
+      {/* ── DIALOGS ── */}
+      {/* Add Transaction */}
+      <Dialog open={showAddTx} onOpenChange={setShowAddTx}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nueva Transacción</DialogTitle>
+            <DialogDescription>Agrega un ingreso o gasto nuevo</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Tipo</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant={newTx.type === 'expense' ? 'destructive' : 'outline'}
+                  className={newTx.type === 'expense' ? '' : 'hover:text-rose-600'}
+                  onClick={() => setNewTx({ ...newTx, type: 'expense', categoryId: '' })}
+                >
+                  <ArrowDownRight className="h-4 w-4 mr-2" />
+                  Gasto
+                </Button>
+                <Button
+                  type="button"
+                  variant={newTx.type === 'income' ? 'default' : 'outline'}
+                  className={newTx.type === 'income' ? 'bg-emerald-600 hover:bg-emerald-700' : 'hover:text-emerald-600'}
+                  onClick={() => setNewTx({ ...newTx, type: 'income', categoryId: '' })}
+                >
+                  <ArrowUpRight className="h-4 w-4 mr-2" />
+                  Ingreso
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="tx-amount">Monto</Label>
+              <Input
+                id="tx-amount"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                value={newTx.amount}
+                onChange={(e) => setNewTx({ ...newTx, amount: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="tx-desc">Descripción</Label>
+              <Input
+                id="tx-desc"
+                placeholder="Ej: Compra en supermercado"
+                value={newTx.description}
+                onChange={(e) => setNewTx({ ...newTx, description: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Categoría</Label>
+              <Select
+                value={newTx.categoryId}
+                onValueChange={(v) => setNewTx({ ...newTx, categoryId: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar categoría" />
+                </SelectTrigger>
+                <SelectContent>
+                  {txCategories.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      <div className="flex items-center gap-2">
+                        <div className="h-3 w-3 rounded-full" style={{ backgroundColor: c.color }} />
+                        {c.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Fecha</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start text-left font-normal">
+                    <Calendar className="mr-2 h-4 w-4" />
+                    {format(newTx.date, "PPP", { locale: es })}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <CalendarComponent
+                    mode="single"
+                    selected={newTx.date}
+                    onSelect={(d) => d && setNewTx({ ...newTx, date: d })}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddTx(false)}>Cancelar</Button>
+            <Button onClick={handleCreateTx} className={newTx.type === 'income' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}>
+              Crear
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Goal */}
+      <Dialog open={showAddGoal} onOpenChange={setShowAddGoal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nueva Meta</DialogTitle>
+            <DialogDescription>Crea una meta de ahorro</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="goal-name">Nombre</Label>
+              <Input
+                id="goal-name"
+                placeholder="Ej: Vacaciones de verano"
+                value={newGoal.name}
+                onChange={(e) => setNewGoal({ ...newGoal, name: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="goal-desc">Descripción</Label>
+              <Textarea
+                id="goal-desc"
+                placeholder="Descripción opcional"
+                value={newGoal.description}
+                onChange={(e) => setNewGoal({ ...newGoal, description: e.target.value })}
+                rows={2}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="goal-amount">Monto Objetivo</Label>
+              <Input
+                id="goal-amount"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                value={newGoal.targetAmount}
+                onChange={(e) => setNewGoal({ ...newGoal, targetAmount: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Fecha Límite</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start text-left font-normal">
+                    <Calendar className="mr-2 h-4 w-4" />
+                    {newGoal.deadline ? format(newGoal.deadline, "PPP", { locale: es }) : 'Seleccionar fecha'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <CalendarComponent
+                    mode="single"
+                    selected={newGoal.deadline}
+                    onSelect={(d) => setNewGoal({ ...newGoal, deadline: d ?? undefined })}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div className="space-y-2">
+              <Label>Color</Label>
+              <div className="flex gap-2 flex-wrap">
+                {GOAL_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    className="h-8 w-8 rounded-full border-2 transition-all hover:scale-110"
+                    style={{
+                      backgroundColor: c,
+                      borderColor: newGoal.color === c ? c : 'transparent',
+                      boxShadow: newGoal.color === c ? `0 0 0 2px white, 0 0 0 4px ${c}` : 'none',
+                    }}
+                    onClick={() => setNewGoal({ ...newGoal, color: c })}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddGoal(false)}>Cancelar</Button>
+            <Button onClick={handleCreateGoal}>Crear Meta</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Savings */}
+      <Dialog open={!!showAddSavings} onOpenChange={() => setShowAddSavings(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Agregar Ahorro</DialogTitle>
+            <DialogDescription>
+              Añadir ahorro a: <strong>{showAddSavings?.name}</strong>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm text-muted-foreground">
+              <span>Ahorrado: {formatCurrency(showAddSavings?.savedAmount ?? 0)}</span>
+              <span>Meta: {formatCurrency(showAddSavings?.targetAmount ?? 0)}</span>
+            </div>
+            <Progress
+              value={formatPercent(showAddSavings?.savedAmount ?? 0, showAddSavings?.targetAmount ?? 1)}
+              className="h-2"
+            />
+            <Label htmlFor="savings-amount">Monto a agregar</Label>
+            <Input
+              id="savings-amount"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="0.00"
+              value={savingsAmount}
+              onChange={(e) => setSavingsAmount(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddSavings(null)}>Cancelar</Button>
+            <Button onClick={handleAddSavings}>Agregar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Initial Balance */}
+      <Dialog open={showEditBalance} onOpenChange={setShowEditBalance}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Saldo Inicial</DialogTitle>
+            <DialogDescription>Establece tu saldo inicial para calcular el balance total</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="init-balance">Saldo Inicial</Label>
+            <Input
+              id="init-balance"
+              type="number"
+              step="0.01"
+              placeholder="0.00"
+              value={initialBalance}
+              onChange={(e) => setInitialBalance(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditBalance(false)}>Cancelar</Button>
+            <Button onClick={handleUpdateBalance}>Guardar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Goal Item */}
+      <Dialog open={!!showAddItem} onOpenChange={() => setShowAddItem(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Nuevo Item</DialogTitle>
+            <DialogDescription>Agrega un item a la meta</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="item-name">Nombre</Label>
+              <Input
+                id="item-name"
+                placeholder="Nombre del item"
+                value={newItem.name}
+                onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="item-cost">Costo Estimado</Label>
+              <Input
+                id="item-cost"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                value={newItem.estimatedCost}
+                onChange={(e) => setNewItem({ ...newItem, estimatedCost: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddItem(null)}>Cancelar</Button>
+            <Button onClick={handleCreateItem}>Agregar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Item Cost */}
+      <Dialog open={!!editingItemCost} onOpenChange={() => setEditingItemCost(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Editar Costo Real</DialogTitle>
+            <DialogDescription>Actualiza el costo real del item</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="edit-cost">Costo Real</Label>
+            <Input
+              id="edit-cost"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="0.00"
+              value={editingItemCost?.cost ?? ''}
+              onChange={(e) => editingItemCost && setEditingItemCost({ ...editingItemCost, cost: e.target.value })}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingItemCost(null)}>Cancelar</Button>
+            <Button onClick={handleUpdateItemCost}>Guardar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteConfirm?.type === 'transaction' && `¿Eliminar la transacción "${deleteConfirm.name}"? Esta acción no se puede deshacer.`}
+              {deleteConfirm?.type === 'goal' && `¿Eliminar la meta "${deleteConfirm.name}"? Se eliminarán todos sus items también.`}
+              {deleteConfirm?.type === 'goalItem' && '¿Eliminar este item? Esta acción no se puede deshacer.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!deleteConfirm) return;
+                if (deleteConfirm.type === 'transaction') {
+                  handleDeleteTx(deleteConfirm.id);
+                } else if (deleteConfirm.type === 'goal') {
+                  handleDeleteGoal(deleteConfirm.id);
+                } else if (deleteConfirm.type === 'goalItem') {
+                  const [goalId, itemId] = deleteConfirm.name!.split(':');
+                  handleDeleteItem(goalId, itemId);
+                }
+              }}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+// ─── DASHBOARD TAB ────────────────────────────────────────────
+function DashboardTab({
+  settings,
+  stats,
+  transactions,
+  categories,
+  goals,
+  currentBalance,
+  onEditBalance,
+  onViewAllTx,
+}: {
+  settings: Settings | null;
+  stats: Stats | null;
+  transactions: Transaction[];
+  categories: Category[];
+  goals: Goal[];
+  currentBalance: number;
+  onEditBalance: () => void;
+  onViewAllTx: () => void;
+}) {
+  const isBalanceZero = !settings || settings.initialBalance === 0;
+  const recentTransactions = transactions.slice(0, 5);
+  const activeGoals = goals.filter(g => g.savedAmount < g.targetAmount);
+  const chartData = stats?.last6Months ?? [];
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Dashboard</h2>
+          <p className="text-muted-foreground text-sm">Resumen de tus finanzas</p>
+        </div>
+      </div>
+
+      {/* Initial Balance Card */}
+      {isBalanceZero && (
+        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
+          <Card className="border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center">
+                  <DollarSign className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div>
+                  <p className="font-medium text-sm">Configura tu saldo inicial</p>
+                  <p className="text-xs text-muted-foreground">Para calcular tu balance total correctamente</p>
+                </div>
+              </div>
+              <Button onClick={onEditBalance} size="sm" className="bg-emerald-600 hover:bg-emerald-700">
+                Configurar
+              </Button>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+          <Card className="overflow-hidden">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Saldo Actual</CardTitle>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onEditBalance}>
+                <DollarSign className="h-4 w-4 text-muted-foreground" />
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2">
+                <span className="text-2xl font-bold">{formatCurrency(currentBalance)}</span>
+                <Badge variant={currentBalance >= 0 ? 'default' : 'destructive'} className="text-xs">
+                  {currentBalance >= 0 ? (
+                    <TrendingUp className="h-3 w-3 mr-1" />
+                  ) : (
+                    <TrendingDown className="h-3 w-3 mr-1" />
+                  )}
+                  {currentBalance >= 0 ? 'Positivo' : 'Negativo'}
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Ingresos del Mes</CardTitle>
+              <ArrowUpRight className="h-4 w-4 text-emerald-500" />
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold text-emerald-600">{formatCurrency(stats?.currentMonthIncome ?? 0)}</p>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Gastos del Mes</CardTitle>
+              <ArrowDownRight className="h-4 w-4 text-rose-500" />
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold text-rose-600">{formatCurrency(stats?.currentMonthExpense ?? 0)}</p>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Metas Activas</CardTitle>
+              <Target className="h-4 w-4 text-violet-500" />
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">{activeGoals.length}</p>
+              <p className="text-xs text-muted-foreground">
+                {goals.length > 0 && goals.every(g => g.savedAmount >= g.targetAmount) ? '¡Todas completadas!' : `${goals.length - activeGoals.length} completadas`}
+              </p>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+
+      {/* Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Income vs Expense Chart */}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Ingresos vs Gastos</CardTitle>
+              <CardDescription>Últimos 6 meses</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {chartData.length > 0 ? (
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-muted" />
+                      <XAxis dataKey="month" tick={{ fontSize: 12 }} className="fill-muted-foreground" />
+                      <YAxis tick={{ fontSize: 12 }} className="fill-muted-foreground" tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
+                      <Tooltip
+                        contentStyle={{ borderRadius: '8px', fontSize: '12px', border: '1px solid #e2e8f0' }}
+                        formatter={(value: number, name: string) => [formatCurrency(value), name === 'income' ? 'Ingresos' : 'Gastos']}
+                      />
+                      <Bar dataKey="income" fill="#22c55e" radius={[4, 4, 0, 0]} name="income" />
+                      <Bar dataKey="expense" fill="#ef4444" radius={[4, 4, 0, 0]} name="expense" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
+                  No hay datos para mostrar
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Top Expense Categories */}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Top Categorías de Gasto</CardTitle>
+              <CardDescription>Categorías con mayor gasto total</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {stats?.topExpenseCategories && stats.topExpenseCategories.length > 0 ? (
+                <div className="space-y-3">
+                  {stats.topExpenseCategories.map((cat, idx) => {
+                    const maxTotal = stats.topExpenseCategories[0].total;
+                    return (
+                      <div key={cat.name} className="space-y-1.5">
+                        <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className="text-muted-foreground font-medium w-5">#{idx + 1}</span>
+                            <DynamicIcon name={cat.icon} className="h-4 w-4" style={{ color: cat.color }} />
+                            <span className="font-medium">{cat.name}</span>
+                          </div>
+                          <span className="font-semibold">{formatCurrency(cat.total)}</span>
+                        </div>
+                        <div className="h-2 bg-muted rounded-full overflow-hidden">
+                          <motion.div
+                            className="h-full rounded-full"
+                            style={{ backgroundColor: cat.color }}
+                            initial={{ width: 0 }}
+                            animate={{ width: `${(cat.total / maxTotal) * 100}%` }}
+                            transition={{ duration: 0.8, delay: idx * 0.1 }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">
+                  No hay gastos registrados
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+
+      {/* Monthly Averages */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center">
+                <TrendingUp className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Promedio Ingreso Mensual</p>
+                <p className="text-lg font-bold text-emerald-600">{formatCurrency(stats?.averageMonthlyIncome ?? 0)}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-rose-100 dark:bg-rose-900/50 flex items-center justify-center">
+                <TrendingDown className="h-5 w-5 text-rose-600 dark:text-rose-400" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Promedio Gasto Mensual</p>
+                <p className="text-lg font-bold text-rose-600">{formatCurrency(stats?.averageMonthlyExpense ?? 0)}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Recent Transactions */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-base">Transacciones Recientes</CardTitle>
+            <CardDescription>Últimas 5 transacciones</CardDescription>
+          </div>
+          <Button variant="outline" size="sm" onClick={onViewAllTx}>
+            Ver todas
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {recentTransactions.length > 0 ? (
+            <div className="space-y-2">
+              {recentTransactions.map((tx) => (
+                <div key={tx.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="h-9 w-9 rounded-lg flex items-center justify-center"
+                      style={{ backgroundColor: (tx.category?.color ?? '#6b7280') + '20' }}
+                    >
+                      <DynamicIcon
+                        name={tx.category?.icon ?? 'Tag'}
+                        className="h-4 w-4"
+                        style={{ color: tx.category?.color ?? '#6b7280' }}
+                      />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{tx.description}</p>
+                      <p className="text-xs text-muted-foreground">{formatDateShort(tx.date)}</p>
+                    </div>
+                  </div>
+                  <span className={`text-sm font-semibold ${tx.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground text-sm">
+              No hay transacciones. ¡Agrega tu primera!
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ─── TRANSACTIONS TAB ─────────────────────────────────────────
+function TransactionsTab({
+  transactions,
+  categories,
+  txFilterType,
+  setTxFilterType,
+  txFilterMonth,
+  setTxFilterMonth,
+  txSearch,
+  setTxSearch,
+  filteredTotalIncome,
+  filteredTotalExpense,
+  onAddTx,
+  onDeleteTx,
+}: {
+  transactions: Transaction[];
+  categories: Category[];
+  txFilterType: 'all' | 'income' | 'expense';
+  setTxFilterType: (v: 'all' | 'income' | 'expense') => void;
+  txFilterMonth: string;
+  setTxFilterMonth: (v: string) => void;
+  txSearch: string;
+  setTxSearch: (v: string) => void;
+  filteredTotalIncome: number;
+  filteredTotalExpense: number;
+  onAddTx: () => void;
+  onDeleteTx: (id: string, desc: string) => void;
+}) {
+  // Generate month options
+  const monthOptions: string[] = [];
+  const now = new Date();
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    monthOptions.push(getMonthYear(d));
+  }
+
+  const monthLabel = (key: string) => {
+    const [y, m] = key.split('-');
+    const d = new Date(parseInt(y), parseInt(m) - 1, 1);
+    return d.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Transacciones</h2>
+          <p className="text-muted-foreground text-sm">Historial de ingresos y gastos</p>
+        </div>
+        <Button onClick={onAddTx} className="gap-2">
+          <Plus className="h-4 w-4" />
+          Agregar
+        </Button>
+      </div>
+
+      {/* Filters */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar transacción..."
+                className="pl-9"
+                value={txSearch}
+                onChange={(e) => setTxSearch(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-2">
+              <Select value={txFilterType} onValueChange={(v) => setTxFilterType(v as 'all' | 'income' | 'expense')}>
+                <SelectTrigger className="w-36">
+                  <Filter className="h-4 w-4 mr-2" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="income">Ingresos</SelectItem>
+                  <SelectItem value="expense">Gastos</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={txFilterMonth} onValueChange={setTxFilterMonth}>
+                <SelectTrigger className="w-44">
+                  <Calendar className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="Todos los meses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los meses</SelectItem>
+                  {monthOptions.map((m) => (
+                    <SelectItem key={m} value={m}>
+                      {monthLabel(m)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Transaction List */}
+      <div className="space-y-2">
+        {transactions.length > 0 ? (
+          transactions.map((tx, idx) => (
+            <motion.div
+              key={tx.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: Math.min(idx * 0.03, 0.3) }}
+            >
+              <Card className="hover:shadow-md transition-shadow">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div
+                        className="h-11 w-11 rounded-xl flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: (tx.category?.color ?? '#6b7280') + '20' }}
+                      >
+                        <DynamicIcon
+                          name={tx.category?.icon ?? 'Tag'}
+                          className="h-5 w-5"
+                          style={{ color: tx.category?.color ?? '#6b7280' }}
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm truncate">{tx.description}</p>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <span>{formatDate(tx.date)}</span>
+                          {tx.category && (
+                            <>
+                              <span>·</span>
+                              <Badge variant="secondary" className="text-xs px-1.5 py-0">
+                                {tx.category.name}
+                              </Badge>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span
+                        className={`text-base font-bold ${
+                          tx.type === 'income' ? 'text-emerald-600' : 'text-rose-600'
+                        }`}
+                      >
+                        {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        onClick={() => onDeleteTx(tx.id, tx.description)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          ))
+        ) : (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <p className="text-muted-foreground text-sm mb-3">No hay transacciones que mostrar</p>
+              <Button onClick={onAddTx} variant="outline" size="sm">
+                <Plus className="h-4 w-4 mr-2" />
+                Agregar transacción
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Summary */}
+      {transactions.length > 0 && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Ingresos</p>
+                <p className="font-bold text-emerald-600">{formatCurrency(filteredTotalIncome)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Gastos</p>
+                <p className="font-bold text-rose-600">{formatCurrency(filteredTotalExpense)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Balance Neto</p>
+                <p className={`font-bold ${filteredTotalIncome - filteredTotalExpense >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  {formatCurrency(filteredTotalIncome - filteredTotalExpense)}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ─── GOALS TAB ────────────────────────────────────────────────
+function GoalsTab({
+  goals,
+  expandedGoal,
+  setExpandedGoal,
+  onAddGoal,
+  onAddSavings,
+  onDeleteGoal,
+  onToggleItem,
+  onEditItemCost,
+  onDeleteItem,
+  onAddItem,
+}: {
+  goals: Goal[];
+  expandedGoal: string | null;
+  setExpandedGoal: (id: string | null) => void;
+  onAddGoal: () => void;
+  onAddSavings: (g: Goal) => void;
+  onDeleteGoal: (id: string, name: string) => void;
+  onToggleItem: (goalId: string, item: GoalItem) => void;
+  onEditItemCost: (goalId: string, itemId: string, cost: number) => void;
+  onDeleteItem: (goalId: string, itemId: string) => void;
+  onAddItem: (goalId: string) => void;
+}) {
+  const isQuinceañera = (g: Goal) => g.id === 'quinceanera-2026';
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Metas de Ahorro</h2>
+          <p className="text-muted-foreground text-sm">Sigue tus metas y ahorros</p>
+        </div>
+        <Button onClick={onAddGoal} className="gap-2">
+          <Plus className="h-4 w-4" />
+          Nueva Meta
+        </Button>
+      </div>
+
+      {/* Goals Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {goals.map((goal, idx) => {
+          const pct = formatPercent(goal.savedAmount, goal.targetAmount);
+          const isQuin = isQuinceañera(goal);
+          const isExpanded = expandedGoal === goal.id;
+          const isComplete = goal.savedAmount >= goal.targetAmount;
+
+          return (
+            <motion.div
+              key={goal.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.08 }}
+            >
+              <Card
+                className={`overflow-hidden transition-shadow hover:shadow-lg ${
+                  isQuin
+                    ? 'border-pink-300 dark:border-pink-800 ring-1 ring-pink-200 dark:ring-pink-800'
+                    : isComplete
+                    ? 'border-emerald-300 dark:border-emerald-800'
+                    : ''
+                }`}
+              >
+                {/* Special header for Quinceañera */}
+                {isQuin && (
+                  <div className="bg-gradient-to-r from-pink-500 to-fuchsia-500 p-4 text-white">
+                    <div className="flex items-center gap-2">
+                      <PartyPopper className="h-5 w-5" />
+                      <Crown className="h-4 w-4" />
+                      <span className="text-sm font-semibold">Meta Especial</span>
+                      {isComplete && (
+                        <Badge className="bg-white/20 text-white border-0 ml-auto">
+                          <Star className="h-3 w-3 mr-1" />
+                          ¡Completada!
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {isComplete && !isQuin && (
+                  <div className="bg-gradient-to-r from-emerald-500 to-teal-500 p-3 text-white">
+                    <div className="flex items-center gap-2">
+                      <Star className="h-4 w-4" />
+                      <span className="text-sm font-semibold">Meta Completada</span>
+                    </div>
+                  </div>
+                )}
+
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div
+                        className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: goal.color + '20' }}
+                      >
+                        <Target className="h-4 w-4" style={{ color: goal.color }} />
+                      </div>
+                      <div className="min-w-0">
+                        <CardTitle className="text-base truncate">{goal.name}</CardTitle>
+                        {goal.description && (
+                          <CardDescription className="text-xs">{goal.description}</CardDescription>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => setExpandedGoal(isExpanded ? null : goal.id)}
+                      >
+                        {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        onClick={() => onDeleteGoal(goal.id, goal.name)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <div className="flex justify-between text-sm mb-1.5">
+                      <span className="text-muted-foreground">
+                        {formatCurrency(goal.savedAmount)} de {formatCurrency(goal.targetAmount)}
+                      </span>
+                      <span className="font-semibold" style={{ color: goal.color }}>{pct}%</span>
+                    </div>
+                    <div className="h-2.5 bg-muted rounded-full overflow-hidden">
+                      <motion.div
+                        className="h-full rounded-full"
+                        style={{ backgroundColor: isComplete ? '#22c55e' : goal.color }}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${Math.min(pct, 100)}%` }}
+                        transition={{ duration: 1, delay: idx * 0.1 }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                      {goal.deadline && (
+                        <div className="flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          <span>{formatDate(goal.deadline)}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1">
+                        <span>{goal.items.length} items</span>
+                      </div>
+                    </div>
+                    {!isComplete && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs gap-1"
+                        style={{ borderColor: goal.color, color: goal.color }}
+                        onClick={() => onAddSavings(goal)}
+                      >
+                        <Plus className="h-3 w-3" />
+                        Agregar ahorro
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Expanded: Items List */}
+                  <AnimatePresence>
+                    {isExpanded && goal.items.length > 0 && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.3 }}
+                        className="overflow-hidden"
+                      >
+                        <Separator className="my-3" />
+                        <div className="space-y-2 max-h-80 overflow-y-auto">
+                          {/* Item summary header */}
+                          <div className="flex justify-between text-xs text-muted-foreground px-1">
+                            <span>Total estimado: {formatCurrency(goal.items.reduce((s, i) => s + i.estimatedCost, 0))}</span>
+                            <span>
+                              Pagado: {formatCurrency(goal.items.filter(i => i.isPaid).reduce((s, i) => s + i.actualCost, 0))}
+                            </span>
+                          </div>
+
+                          {goal.items.map((item) => (
+                            <div
+                              key={item.id}
+                              className={`flex items-center gap-3 p-2 rounded-lg border transition-colors ${
+                                item.isPaid
+                                  ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800'
+                                  : 'bg-background border-border'
+                              }`}
+                            >
+                              <Checkbox
+                                checked={item.isPaid}
+                                onCheckedChange={() => onToggleItem(goal.id, item)}
+                                className={item.isPaid ? 'border-emerald-500' : ''}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p className={`text-sm ${item.isPaid ? 'line-through text-muted-foreground' : 'font-medium'}`}>
+                                  {item.name}
+                                </p>
+                                <div className="flex gap-2 text-xs text-muted-foreground">
+                                  <span>Est: {formatCurrency(item.estimatedCost)}</span>
+                                  {item.isPaid && (
+                                    <span className="text-emerald-600 font-medium">
+                                      Real: {formatCurrency(item.actualCost)}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1 shrink-0">
+                                {item.isPaid ? (
+                                  <Check className="h-4 w-4 text-emerald-500" />
+                                ) : (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={() => onEditItemCost(goal.id, item.id, item.estimatedCost)}
+                                  >
+                                    <span className="text-xs font-medium" style={{ color: goal.color }}>
+                                      $
+                                    </span>
+                                  </Button>
+                                )}
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                  onClick={() => onDeleteItem(goal.id, item.id)}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full h-8 text-xs gap-1 mt-2"
+                            onClick={() => onAddItem(goal.id)}
+                          >
+                            <Plus className="h-3 w-3" />
+                            Agregar item
+                          </Button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </CardContent>
+              </Card>
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {goals.length === 0 && (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Target className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+            <p className="text-muted-foreground text-sm mb-3">No hay metas de ahorro</p>
+            <Button onClick={onAddGoal} variant="outline" size="sm">
+              <Plus className="h-4 w-4 mr-2" />
+              Crear meta
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
