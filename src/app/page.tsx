@@ -871,6 +871,8 @@ export default function Home() {
                   categories={categories}
                   goals={goals}
                   currentBalance={currentBalance}
+                  githubUser={githubUser}
+                  syncStatus={syncStatus}
                   onEditBalance={() => {
                     setInitialBalance(String(settings?.initialBalance ?? 0));
                     setShowEditBalance(true);
@@ -1412,6 +1414,8 @@ function DashboardTab({
   categories,
   goals,
   currentBalance,
+  githubUser,
+  syncStatus,
   onEditBalance,
   onViewAllTx,
   onAddIncome,
@@ -1423,6 +1427,8 @@ function DashboardTab({
   categories: Category[];
   goals: Goal[];
   currentBalance: number;
+  githubUser: string;
+  syncStatus: 'idle' | 'syncing' | 'synced' | 'error';
   onEditBalance: () => void;
   onViewAllTx: () => void;
   onAddIncome: () => void;
