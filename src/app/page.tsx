@@ -24,12 +24,17 @@ import {
   Star,
   Crown,
   PartyPopper,
-  // Menu icon no longer used with bottom nav
   Wallet,
   Activity,
   Upload,
   FileSpreadsheet,
   AlertCircle,
+  LogOut,
+  RefreshCw,
+  Eye,
+  EyeOff,
+  Cloud,
+  CloudOff,
 } from 'lucide-react';
 import {
   BarChart,
@@ -92,6 +97,7 @@ import { DynamicIcon } from '@/components/dynamic-icon';
 
 import { Settings, Transaction, Category, Goal, GoalItem, Stats } from '@/lib/types';
 import * as api from '@/lib/api';
+import * as sync from '@/lib/sync';
 import { formatCurrency, formatDate, formatDateShort, formatPercent, getMonthYear } from '@/lib/format';
 
 // ─── Helpers ───────────────────────────────────────────────────
@@ -109,6 +115,20 @@ const GOAL_COLORS = [
 
 // ─── Main App ──────────────────────────────────────────────────
 export default function Home() {
+  // ── Auth State ──
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [authToken, setAuthToken] = useState('');
+  const [gistId, setGistId] = useState('');
+  const [githubUser, setGithubUser] = useState('');
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
+
+  // Login form state
+  const [loginToken, setLoginToken] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState('');
+  const [showToken, setShowToken] = useState(false);
+  const [showTokenHelp, setShowTokenHelp] = useState(false);
+
   // ── State ──
   const [activeTab, setActiveTab] = useState<'dashboard' | 'transactions' | 'goals'>('dashboard');
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -182,12 +202,98 @@ export default function Home() {
     }
   }, []);
 
+  // Trigger sync after any data change
+  const triggerSync = useCallback(() => {
+    if (authToken && gistId) {
+      sync.scheduleSync(authToken, gistId, setSyncStatus);
+    }
+  }, [authToken, gistId]);
+
+  // Wrapper that loads data AND syncs to cloud
+  const loadAndSync = useCallback(async () => {
+    await loadAllData();
+    triggerSync();
+  }, [loadAllData, triggerSync]);
+
+  // ── Login / Auto-login ──
+  const handleLogin = async (token: string) => {
+    setLoginLoading(true);
+    setLoginError('');
+    try {
+      const username = await sync.getGitHubUser(token.trim());
+      const gid = await sync.findOrCreateGist(token.trim());
+      sync.setStoredAuth(token.trim(), gid, username);
+      setAuthToken(token.trim());
+      setGistId(gid);
+      setGithubUser(username);
+      setIsLoggedIn(true);
+      const remoteData = await sync.loadFromGist(token.trim(), gid);
+      if (remoteData) {
+        sync.applyRemoteData(remoteData);
+        toast.success(`Bienvenido, ${username}! Datos sincronizados.`);
+      } else {
+        toast.success(`Bienvenido, ${username}!`);
+      }
+    } catch (err: any) {
+      if (err.message === 'TOKEN_INVALID') {
+        setLoginError('Token invalido. Verifica que sea correcto.');
+      } else if (err.message === 'TOKEN_FORBIDDEN') {
+        setLoginError('Token sin permisos. Necesitas permisos de gist.');
+      } else if (err.message === 'GIST_CREATE_FORBIDDEN') {
+        setLoginError('Sin permisos para crear gists.');
+      } else {
+        setLoginError('Error de conexion. Verifica tu conexion a internet.');
+      }
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    sync.cancelPendingSync();
+    sync.clearStoredAuth();
+    setAuthToken('');
+    setGistId('');
+    setGithubUser('');
+    setIsLoggedIn(false);
+    setSyncStatus('idle');
+    toast.info('Sesion cerrada.');
+  };
+
+  const handleForceSync = async () => {
+    if (!authToken || !gistId) return;
+    setSyncStatus('syncing');
+    try {
+      const data = sync.gatherLocalData();
+      const ok = await sync.saveToGist(authToken, gistId, data);
+      if (ok) {
+        toast.success('Datos sincronizados');
+        setSyncStatus('synced');
+      } else {
+        toast.error('Error al sincronizar');
+        setSyncStatus('error');
+      }
+    } catch {
+      toast.error('Error de conexion');
+      setSyncStatus('error');
+    }
+  };
+
   useEffect(() => {
     (async () => {
       try {
         await api.seedData();
-      } catch {
-        // Seed may already exist
+      } catch {}
+      const stored = sync.getStoredAuth();
+      if (stored) {
+        setAuthToken(stored.token);
+        setGistId(stored.gistId);
+        setGithubUser(stored.username);
+        setIsLoggedIn(true);
+        const remoteData = await sync.loadFromGist(stored.token, stored.gistId);
+        if (remoteData) {
+          sync.applyRemoteData(remoteData);
+        }
       }
       await loadAllData();
     })();
@@ -210,7 +316,7 @@ export default function Home() {
       toast.success('Transacción creada');
       setShowAddTx(false);
       setNewTx({ type: 'expense', amount: '', description: '', categoryId: '', date: new Date() });
-      await loadAllData();
+      await loadAndSync();
     } catch {
       toast.error('Error al crear transacción');
     }
@@ -221,7 +327,7 @@ export default function Home() {
       await api.deleteTransaction(id);
       toast.success('Transacción eliminada');
       setDeleteConfirm(null);
-      await loadAllData();
+      await loadAndSync();
     } catch {
       toast.error('Error al eliminar');
     }
@@ -244,7 +350,7 @@ export default function Home() {
       toast.success('Meta creada');
       setShowAddGoal(false);
       setNewGoal({ name: '', description: '', targetAmount: '', deadline: undefined, color: '#6366f1' });
-      await loadAllData();
+      await loadAndSync();
     } catch {
       toast.error('Error al crear meta');
     }
@@ -258,7 +364,7 @@ export default function Home() {
       toast.success('Ahorro agregado');
       setShowAddSavings(null);
       setSavingsAmount('');
-      await loadAllData();
+      await loadAndSync();
     } catch {
       toast.error('Error al agregar ahorro');
     }
@@ -269,7 +375,7 @@ export default function Home() {
       await api.deleteGoal(id);
       toast.success('Meta eliminada');
       setDeleteConfirm(null);
-      await loadAllData();
+      await loadAndSync();
     } catch {
       toast.error('Error al eliminar meta');
     }
@@ -283,7 +389,7 @@ export default function Home() {
         isPaid: !item.isPaid,
       });
       toast.success(item.isPaid ? 'Item desmarcado' : 'Item marcado como pagado');
-      await loadAllData();
+      await loadAndSync();
     } catch {
       toast.error('Error al actualizar item');
     }
@@ -301,7 +407,7 @@ export default function Home() {
       });
       toast.success('Costo actualizado');
       setEditingItemCost(null);
-      await loadAllData();
+      await loadAndSync();
     } catch {
       toast.error('Error al actualizar costo');
     }
@@ -317,7 +423,7 @@ export default function Home() {
       toast.success('Item agregado');
       setShowAddItem(null);
       setNewItem({ name: '', estimatedCost: '' });
-      await loadAllData();
+      await loadAndSync();
     } catch {
       toast.error('Error al crear item');
     }
@@ -439,7 +545,7 @@ export default function Home() {
       setShowImportExcel(false);
       setImportPreview([]);
       setImportError('');
-      await loadAllData();
+      await loadAndSync();
     } catch {
       toast.error('Error al importar gastos');
     } finally {
@@ -451,7 +557,7 @@ export default function Home() {
     try {
       await api.deleteGoalItem(goalId, itemId);
       toast.success('Item eliminado');
-      await loadAllData();
+      await loadAndSync();
     } catch {
       toast.error('Error al eliminar item');
     }
@@ -463,7 +569,7 @@ export default function Home() {
       await api.updateSettings({ initialBalance: parseFloat(initialBalance) || 0 });
       toast.success('Saldo inicial actualizado');
       setShowEditBalance(false);
-      await loadAllData();
+      await loadAndSync();
     } catch {
       toast.error('Error al actualizar saldo');
     }
@@ -527,7 +633,33 @@ export default function Home() {
           </Button>
         ))}
       </nav>
-      <div className="p-4 border-t">
+      <div className="p-4 border-t space-y-3">
+        {/* Sync status */}
+        {githubUser !== 'Offline' && (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              {syncStatus === 'syncing' ? (
+                <RefreshCw className="h-3 w-3 animate-spin text-amber-500" />
+              ) : syncStatus === 'synced' ? (
+                <Cloud className="h-3 w-3 text-emerald-500" />
+              ) : syncStatus === 'error' ? (
+                <CloudOff className="h-3 w-3 text-red-500" />
+              ) : (
+                <Cloud className="h-3 w-3 text-muted-foreground" />
+              )}
+              <span>
+                {syncStatus === 'syncing' ? 'Sincronizando...' : syncStatus === 'synced' ? 'Sincronizado' : syncStatus === 'error' ? 'Error de sync' : githubUser}
+              </span>
+            </div>
+            {syncStatus !== 'syncing' && githubUser !== 'Offline' && (
+              <button onClick={handleForceSync} className="text-muted-foreground hover:text-foreground">
+                <RefreshCw className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Balance */}
         <div className="rounded-xl bg-gradient-to-br from-emerald-500/10 to-teal-500/10 p-4">
           <div className="flex items-center gap-2 mb-2">
             <PiggyBank className="h-4 w-4 text-emerald-600" />
@@ -537,9 +669,145 @@ export default function Home() {
             {loading ? <Skeleton className="h-6 w-24" /> : formatCurrency(currentBalance)}
           </p>
         </div>
+
+        {/* Logout */}
+        {githubUser !== 'Offline' && (
+          <Button variant="ghost" size="sm" onClick={handleLogout} className="w-full justify-start gap-2 text-muted-foreground hover:text-red-600 h-9">
+            <LogOut className="h-4 w-4" />
+            Cerrar sesion
+          </Button>
+        )}
       </div>
     </div>
   );
+
+  // ── LOGIN SCREEN ──
+  if (!isLoggedIn) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-emerald-50 p-4">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-md"
+        >
+          <Card className="shadow-lg border-slate-200">
+            <CardContent className="p-6 sm:p-8 space-y-6">
+              {/* Logo */}
+              <div className="text-center">
+                <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center mx-auto mb-4 shadow-lg">
+                  <Wallet className="h-8 w-8 text-white" />
+                </div>
+                <h1 className="text-2xl font-bold tracking-tight">MiFinanzas</h1>
+                <p className="text-sm text-muted-foreground mt-1">Ingresá para sincronizar tus datos entre dispositivos</p>
+              </div>
+
+              {/* Token Input */}
+              <div className="space-y-2">
+                <Label htmlFor="login-token">Token de GitHub</Label>
+                <div className="relative">
+                  <Input
+                    id="login-token"
+                    type={showToken ? 'text' : 'password'}
+                    placeholder="ghp_xxxxxxxxxxxx"
+                    value={loginToken}
+                    onChange={(e) => { setLoginToken(e.target.value); setLoginError(''); }}
+                    className="pr-10 font-mono text-sm"
+                    onKeyDown={(e) => { if (e.key === 'Enter' && loginToken.trim()) handleLogin(loginToken); }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowToken(!showToken)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Error */}
+              {loginError && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>{loginError}</span>
+                </div>
+              )}
+
+              {/* Login Button */}
+              <Button
+                onClick={() => handleLogin(loginToken)}
+                disabled={!loginToken.trim() || loginLoading}
+                className="w-full h-12 text-base gap-2 bg-emerald-600 hover:bg-emerald-700"
+              >
+                {loginLoading ? (
+                  <>
+                    <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Conectando...
+                  </>
+                ) : (
+                  <>
+                    <Cloud className="h-4 w-4" />
+                    Conectar
+                  </>
+                )}
+              </Button>
+
+              {/* Skip option */}
+              <div className="text-center">
+                <button
+                  onClick={() => {
+                    // Allow offline use without sync
+                    setIsLoggedIn(true);
+                    setGithubUser('Offline');
+                    toast.info('Modo sin sincronizacion. Tus datos se guardan solo en este dispositivo.');
+                  }}
+                  className="text-xs text-muted-foreground hover:text-foreground underline"
+                >
+                  Usar sin sincronizar (solo este dispositivo)
+                </button>
+              </div>
+
+              {/* Help */}
+              <div className="border-t pt-4">
+                <button
+                  onClick={() => setShowTokenHelp(!showTokenHelp)}
+                  className="text-xs text-muted-foreground hover:text-foreground w-full text-center flex items-center justify-center gap-1"
+                >
+                  {showTokenHelp ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  Como crear un token de GitHub
+                </button>
+                <AnimatePresence>
+                  {showTokenHelp && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="mt-3 text-xs text-muted-foreground space-y-2 bg-muted/50 rounded-lg p-3">
+                        <p className="font-medium text-foreground">Pasos para crear tu token:</p>
+                        <ol className="list-decimal list-inside space-y-1">
+                          <li>Andá a github.com y logueate</li>
+                          <li>Abri Settings (tu foto de perfil arriba a la derecha)</li>
+                          <li>Scrollea hasta el final y hacé clic en {"<Developer settings>"}</li>
+                          <li>Hacé clic en {"<Personal access tokens>"} → {"<Tokens (classic)>"}</li>
+                          <li>Hacé clic en {"<Generate new token>"}</li>
+                          <li>Ponle un nombre (ej: "MiFinanzas")</li>
+                          <li>Marca solo el scope: <strong>gist</strong></li>
+                          <li>Hacé clic en {"<Generate token>"}</li>
+                          <li>Copia el token que empieza con <code className="bg-muted px-1 rounded">ghp_</code></li>
+                        </ol>
+                        <p className="text-xs">El token se guarda solo en tu navegador. Nunca se comparte.</p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+    );
+  }
 
   // ── Loading state ──
   if (loading) {
@@ -1169,9 +1437,22 @@ function DashboardTab({
     <div className="space-y-5">
       {/* Header + Quick Actions */}
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Dashboard</h2>
-          <p className="text-muted-foreground text-xs sm:text-sm">Resumen de tus finanzas</p>
+        <div className="flex items-center gap-2">
+          <div>
+            <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Dashboard</h2>
+            <p className="text-muted-foreground text-xs sm:text-sm">Resumen de tus finanzas</p>
+          </div>
+          {githubUser !== 'Offline' && (
+            <div className="lg:hidden flex items-center gap-1 text-xs text-muted-foreground ml-2">
+              {syncStatus === 'syncing' ? (
+                <RefreshCw className="h-3 w-3 animate-spin text-amber-500" />
+              ) : syncStatus === 'synced' ? (
+                <Cloud className="h-3 w-3 text-emerald-500" />
+              ) : syncStatus === 'error' ? (
+                <CloudOff className="h-3 w-3 text-red-500" />
+              ) : null}
+            </div>
+          )}
         </div>
         <div className="hidden sm:block lg:hidden">
           <Button variant="ghost" size="icon" className="bg-white shadow-sm rounded-xl border" onClick={() => {}}>
