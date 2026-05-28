@@ -1320,12 +1320,13 @@ export default function Home() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="item-name">Nombre</Label>
+              <Label htmlFor="item-name">Titulo / Nombre</Label>
               <Input
                 id="item-name"
-                placeholder="Nombre del item"
+                placeholder="Ej: Salon, Catering, Musica..."
                 value={newItem.name}
                 onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+                autoFocus
               />
             </div>
             <div className="space-y-2">
@@ -2712,7 +2713,7 @@ function GoalsTab({
 
                   {/* Expanded: Items List */}
                   <AnimatePresence>
-                    {isExpanded && goal.items.length > 0 && (
+                    {isExpanded && (
                       <motion.div
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
@@ -2723,12 +2724,14 @@ function GoalsTab({
                         <Separator className="my-3" />
                         <div className="space-y-2 max-h-80 overflow-y-auto">
                           {/* Item summary header */}
-                          <div className="flex justify-between text-xs text-muted-foreground px-1">
-                            <span>Total estimado: {formatCurrency(goal.items.reduce((s, i) => s + i.estimatedCost, 0))}</span>
-                            <span>
-                              Pagado: {formatCurrency(goal.items.filter(i => i.isPaid).reduce((s, i) => s + i.actualCost, 0))}
-                            </span>
-                          </div>
+                          {goal.items.length > 0 && (
+                            <div className="flex justify-between text-xs text-muted-foreground px-1">
+                              <span>Total estimado: {formatCurrency(goal.items.reduce((s, i) => s + i.estimatedCost, 0))}</span>
+                              <span>
+                                Pagado: {formatCurrency(goal.items.filter(i => i.isPaid).reduce((s, i) => s + i.actualCost, 0))}
+                              </span>
+                            </div>
+                          )}
 
                           {goal.items.map((item) => (
                             <div
@@ -2788,6 +2791,7 @@ function GoalsTab({
                             variant="outline"
                             size="sm"
                             className="w-full h-8 text-xs gap-1 mt-2"
+                            style={{ borderColor: goal.color, color: goal.color }}
                             onClick={() => onAddItem(goal.id)}
                           >
                             <Plus className="h-3 w-3" />
