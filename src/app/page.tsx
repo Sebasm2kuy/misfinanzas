@@ -125,13 +125,13 @@ export default function Home() {
   const [gistId, setGistId] = useState('');
   const [githubUser, setGithubUser] = useState('');
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
+  const [isFirstTime, setIsFirstTime] = useState(true); // true = create password, false = login
 
   // Login form state
-  const [loginToken, setLoginToken] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
-  const [showToken, setShowToken] = useState(false);
-  const [showTokenHelp, setShowTokenHelp] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   // ── State ──
   const [activeTab, setActiveTab] = useState<'dashboard' | 'transactions' | 'goals'>('dashboard');
@@ -161,10 +161,21 @@ export default function Home() {
   // Settings dialog
   const [showSettings, setShowSettings] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
   const [showChangeToken, setShowChangeToken] = useState(false);
+  const [currentPassInput, setCurrentPassInput] = useState('');
+  const [newPassInput, setNewPassInput] = useState('');
+  const [confirmPassInput, setConfirmPassInput] = useState('');
+  const [changePassError, setChangePassError] = useState('');
+  const [changePassLoading, setChangePassLoading] = useState(false);
+  const [showChangePassFields, setShowChangePassFields] = useState(false);
   const [newToken, setNewToken] = useState('');
   const [newTokenError, setNewTokenError] = useState('');
   const [newTokenLoading, setNewTokenLoading] = useState(false);
+  const [showSyncSetup, setShowSyncSetup] = useState(false);
+  const [syncSetupToken, setSyncSetupToken] = useState('');
+  const [syncSetupError, setSyncSetupError] = useState('');
+  const [syncSetupLoading, setSyncSetupLoading] = useState(false);
 
   // Form states
   const [newTx, setNewTx] = useState({ type: 'expense' as 'income' | 'expense', amount: '', description: '', categoryId: '', date: new Date() });
@@ -228,34 +239,47 @@ export default function Home() {
   }, [loadAllData, triggerSync]);
 
   // ── Login / Auto-login ──
-  const handleLogin = async (token: string) => {
+  const handleLogin = async (password: string) => {
     setLoginLoading(true);
     setLoginError('');
     try {
-      const username = await sync.getGitHubUser(token.trim());
-      const gid = await sync.findOrCreateGist(token.trim());
-      sync.setStoredAuth(token.trim(), gid, username);
-      setAuthToken(token.trim());
-      setGistId(gid);
-      setGithubUser(username);
-      setIsLoggedIn(true);
-      const remoteData = await sync.loadFromGist(token.trim(), gid);
-      if (remoteData) {
-        sync.applyRemoteData(remoteData);
-        toast.success(`Bienvenido, ${username}! Datos sincronizados.`);
+      if (isFirstTime) {
+        // Create new password
+        if (password.length < 4) {
+          setLoginError('La contraseña debe tener al menos 4 caracteres.');
+          setLoginLoading(false);
+          return;
+        }
+        await sync.createPassword(password);
+        setIsLoggedIn(true);
+        setGithubUser('');
+        toast.success('Cuenta creada. Bienvenido a MiFinanzas!');
       } else {
-        toast.success(`Bienvenido, ${username}!`);
+        // Verify existing password
+        const valid = await sync.verifyPassword(password);
+        if (!valid) {
+          setLoginError('Contraseña incorrecta.');
+          setLoginLoading(false);
+          return;
+        }
+        setIsLoggedIn(true);
+        setGithubUser('');
+        toast.success('Bienvenido de vuelta!');
       }
-    } catch (err: any) {
-      if (err.message === 'TOKEN_INVALID') {
-        setLoginError('Token invalido. Verifica que sea correcto.');
-      } else if (err.message === 'TOKEN_FORBIDDEN') {
-        setLoginError('Token sin permisos. Necesitas permisos de gist.');
-      } else if (err.message === 'GIST_CREATE_FORBIDDEN') {
-        setLoginError('Sin permisos para crear gists.');
-      } else {
-        setLoginError('Error de conexion. Verifica tu conexion a internet.');
+      // Check if there's a stored sync token
+      const stored = sync.getStoredAuth();
+      if (stored) {
+        setAuthToken(stored.token);
+        setGistId(stored.gistId);
+        setGithubUser(stored.username);
+        const remoteData = await sync.loadFromGist(stored.token, stored.gistId);
+        if (remoteData) {
+          sync.applyRemoteData(remoteData);
+          toast.success('Datos sincronizados.');
+        }
       }
+    } catch {
+      setLoginError('Error inesperado. Intenta de nuevo.');
     } finally {
       setLoginLoading(false);
     }
@@ -269,6 +293,7 @@ export default function Home() {
     setGithubUser('');
     setIsLoggedIn(false);
     setSyncStatus('idle');
+    setIsFirstTime(false);
     toast.info('Sesion cerrada.');
   };
 
@@ -296,16 +321,29 @@ export default function Home() {
       try {
         await api.seedData();
       } catch {}
-      const stored = sync.getStoredAuth();
-      if (stored) {
-        setAuthToken(stored.token);
-        setGistId(stored.gistId);
-        setGithubUser(stored.username);
-        setIsLoggedIn(true);
-        const remoteData = await sync.loadFromGist(stored.token, stored.gistId);
-        if (remoteData) {
-          sync.applyRemoteData(remoteData);
+      // Check if password exists → determine first time vs returning user
+      const hasPass = sync.hasPassword();
+      if (hasPass) {
+        setIsFirstTime(false);
+        // Auto-login if there's a stored session marker
+        const sessionActive = localStorage.getItem('mf_session');
+        if (sessionActive) {
+          setIsLoggedIn(true);
+          const stored = sync.getStoredAuth();
+          if (stored) {
+            setAuthToken(stored.token);
+            setGistId(stored.gistId);
+            setGithubUser(stored.username);
+            const remoteData = await sync.loadFromGist(stored.token, stored.gistId);
+            if (remoteData) {
+              sync.applyRemoteData(remoteData);
+            }
+          } else {
+            setGithubUser('');
+          }
         }
+      } else {
+        setIsFirstTime(true);
       }
       await loadAllData();
     })();
@@ -577,8 +615,8 @@ export default function Home() {
 
   // ── Settings ──
   const handleResetAllData = async () => {
-    // Clear all localStorage data
-    const allKeys = ['mf_settings', 'mf_categories', 'mf_transactions', 'mf_goals', 'mf_seeded', 'mf_auth_token', 'mf_gist_id', 'mf_github_user', 'mf_last_sync'];
+    // Clear ALL localStorage data including password
+    const allKeys = ['mf_settings', 'mf_categories', 'mf_transactions', 'mf_goals', 'mf_seeded', 'mf_auth_token', 'mf_gist_id', 'mf_github_user', 'mf_last_sync', 'mf_pass_hash', 'mf_pass_salt', 'mf_session'];
     for (const key of allKeys) {
       localStorage.removeItem(key);
     }
@@ -589,6 +627,7 @@ export default function Home() {
     setGithubUser('');
     setIsLoggedIn(false);
     setSyncStatus('idle');
+    setIsFirstTime(true);
     setSettings(null);
     setTransactions([]);
     setCategories([]);
@@ -599,37 +638,90 @@ export default function Home() {
     toast.success('Todos los datos fueron eliminados. La app se reinicio.');
   };
 
-  const handleChangeToken = async () => {
-    if (!newToken.trim()) {
-      setNewTokenError('Ingresa un token valido.');
+  const handleChangePassword = async () => {
+    setChangePassError('');
+    if (!showChangePassFields) {
+      // Step 1: verify current password
+      if (!currentPassInput) {
+        setChangePassError('Ingresa tu contraseña actual.');
+        return;
+      }
+      setChangePassLoading(true);
+      const valid = await sync.verifyPassword(currentPassInput);
+      setChangePassLoading(false);
+      if (!valid) {
+        setChangePassError('Contraseña actual incorrecta.');
+        return;
+      }
+      setShowChangePassFields(true);
       return;
     }
-    setNewTokenLoading(true);
-    setNewTokenError('');
+    // Step 2: set new password
+    if (!newPassInput || newPassInput.length < 4) {
+      setChangePassError('La nueva contraseña debe tener al menos 4 caracteres.');
+      return;
+    }
+    if (newPassInput !== confirmPassInput) {
+      setChangePassError('Las contraseñas no coinciden.');
+      return;
+    }
+    setChangePassLoading(true);
+    const ok = await sync.changePassword(currentPassInput, newPassInput);
+    setChangePassLoading(false);
+    if (ok) {
+      setShowChangePassword(false);
+      setCurrentPassInput('');
+      setNewPassInput('');
+      setConfirmPassInput('');
+      setShowChangePassFields(false);
+      toast.success('Contraseña cambiada correctamente.');
+    } else {
+      setChangePassError('Error al cambiar la contraseña.');
+    }
+  };
+
+  const handleSetupSync = async () => {
+    if (!syncSetupToken.trim()) {
+      setSyncSetupError('Ingresa un token de GitHub.');
+      return;
+    }
+    setSyncSetupLoading(true);
+    setSyncSetupError('');
     try {
-      const username = await sync.getGitHubUser(newToken.trim());
-      const gid = await sync.findOrCreateGist(newToken.trim());
-      sync.setStoredAuth(newToken.trim(), gid, username);
-      setAuthToken(newToken.trim());
+      const username = await sync.getGitHubUser(syncSetupToken.trim());
+      const gid = await sync.findOrCreateGist(syncSetupToken.trim());
+      sync.setStoredAuth(syncSetupToken.trim(), gid, username);
+      setAuthToken(syncSetupToken.trim());
       setGistId(gid);
       setGithubUser(username);
-      setShowChangeToken(false);
-      setNewToken('');
-      toast.success(`Token actualizado. Conectado como ${username}.`);
-      await loadAndSync();
+      // Sync local data to gist immediately
+      const data = sync.gatherLocalData();
+      await sync.saveToGist(syncSetupToken.trim(), gid, data);
+      setShowSyncSetup(false);
+      setSyncSetupToken('');
+      toast.success(`Sincronizacion configurada como ${username}.`);
     } catch (err: any) {
       if (err.message === 'TOKEN_INVALID') {
-        setNewTokenError('Token invalido.');
-      } else if (err.message === 'TOKEN_FORBIDDEN') {
-        setNewTokenError('Token sin permisos. Necesitas permisos de gist.');
-      } else if (err.message === 'GIST_CREATE_FORBIDDEN') {
-        setNewTokenError('Sin permisos para crear gists.');
+        setSyncSetupError('Token invalido.');
+      } else if (err.message === 'TOKEN_FORBIDDEN' || err.message === 'GIST_CREATE_FORBIDDEN') {
+        setSyncSetupError('Sin permisos de gist. Necesitas el scope gist.');
       } else {
-        setNewTokenError('Error de conexion.');
+        setSyncSetupError('Error de conexion.');
       }
     } finally {
-      setNewTokenLoading(false);
+      setSyncSetupLoading(false);
     }
+  };
+
+  const handleDisconnectSync = () => {
+    sync.cancelPendingSync();
+    sync.clearStoredAuth();
+    setAuthToken('');
+    setGistId('');
+    setGithubUser('');
+    setSyncStatus('idle');
+    setShowSettings(false);
+    toast.info('Sincronizacion desactivada. Tus datos siguen en este dispositivo.');
   };
 
   const handleUpdateBalance = async () => {
@@ -637,6 +729,7 @@ export default function Home() {
       await api.updateSettings({ initialBalance: parseFloat(initialBalance) || 0 });
       toast.success('Saldo inicial actualizado');
       setShowEditBalance(false);
+      localStorage.setItem('mf_session', '1');
       await loadAndSync();
     } catch {
       toast.error('Error al actualizar saldo');
@@ -703,7 +796,7 @@ export default function Home() {
       </nav>
       <div className="p-4 border-t space-y-3">
         {/* Sync status */}
-        {githubUser !== 'Offline' && (
+        {githubUser && (
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               {syncStatus === 'syncing' ? (
@@ -719,7 +812,7 @@ export default function Home() {
                 {syncStatus === 'syncing' ? 'Sincronizando...' : syncStatus === 'synced' ? 'Sincronizado' : syncStatus === 'error' ? 'Error de sync' : githubUser}
               </span>
             </div>
-            {syncStatus !== 'syncing' && githubUser !== 'Offline' && (
+            {syncStatus !== 'syncing' && (
               <button onClick={handleForceSync} className="text-muted-foreground hover:text-foreground">
                 <RefreshCw className="h-3 w-3" />
               </button>
@@ -744,11 +837,9 @@ export default function Home() {
             <SettingsIcon className="h-4 w-4" />
             Configuracion
           </Button>
-          {githubUser !== 'Offline' && (
-            <Button variant="ghost" size="sm" onClick={handleLogout} className="justify-start gap-2 text-muted-foreground hover:text-red-600 h-9 px-3">
-              <LogOut className="h-4 w-4" />
-            </Button>
-          )}
+          <Button variant="ghost" size="sm" onClick={handleLogout} className="justify-start gap-2 text-muted-foreground hover:text-red-600 h-9 px-3">
+            <LogOut className="h-4 w-4" />
+          </Button>
         </div>
       </div>
     </div>
@@ -771,28 +862,31 @@ export default function Home() {
                   <Wallet className="h-8 w-8 text-white" />
                 </div>
                 <h1 className="text-2xl font-bold tracking-tight">MiFinanzas</h1>
-                <p className="text-sm text-muted-foreground mt-1">Ingresá para sincronizar tus datos entre dispositivos</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {isFirstTime ? 'Creá tu contraseña para empezar' : 'Ingresá tu contraseña'}
+                </p>
               </div>
 
-              {/* Token Input */}
+              {/* Password Input */}
               <div className="space-y-2">
-                <Label htmlFor="login-token">Token de GitHub</Label>
+                <Label htmlFor="login-password">{isFirstTime ? 'Nueva contraseña' : 'Contraseña'}</Label>
                 <div className="relative">
                   <Input
-                    id="login-token"
-                    type={showToken ? 'text' : 'password'}
-                    placeholder="ghp_xxxxxxxxxxxx"
-                    value={loginToken}
-                    onChange={(e) => { setLoginToken(e.target.value); setLoginError(''); }}
-                    className="pr-10 font-mono text-sm"
-                    onKeyDown={(e) => { if (e.key === 'Enter' && loginToken.trim()) handleLogin(loginToken); }}
+                    id="login-password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Tu contraseña"
+                    value={loginPassword}
+                    onChange={(e) => { setLoginPassword(e.target.value); setLoginError(''); }}
+                    className="pr-10 text-sm"
+                    onKeyDown={(e) => { if (e.key === 'Enter' && loginPassword) handleLogin(loginPassword); }}
+                    autoFocus
                   />
                   <button
                     type="button"
-                    onClick={() => setShowToken(!showToken)}
+                    onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   >
-                    {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
               </div>
@@ -807,74 +901,38 @@ export default function Home() {
 
               {/* Login Button */}
               <Button
-                onClick={() => handleLogin(loginToken)}
-                disabled={!loginToken.trim() || loginLoading}
+                onClick={() => handleLogin(loginPassword)}
+                disabled={!loginPassword || loginLoading}
                 className="w-full h-12 text-base gap-2 bg-emerald-600 hover:bg-emerald-700"
               >
                 {loginLoading ? (
                   <>
                     <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Conectando...
+                    {isFirstTime ? 'Creando...' : 'Verificando...'}
                   </>
                 ) : (
                   <>
-                    <Cloud className="h-4 w-4" />
-                    Conectar
+                    {isFirstTime ? <Check className="h-4 w-4" /> : <Wallet className="h-4 w-4" />}
+                    {isFirstTime ? 'Crear cuenta' : 'Ingresar'}
                   </>
                 )}
               </Button>
 
-              {/* Skip option */}
-              <div className="text-center">
-                <button
-                  onClick={() => {
-                    // Allow offline use without sync
-                    setIsLoggedIn(true);
-                    setGithubUser('Offline');
-                    toast.info('Modo sin sincronizacion. Tus datos se guardan solo en este dispositivo.');
-                  }}
-                  className="text-xs text-muted-foreground hover:text-foreground underline"
-                >
-                  Usar sin sincronizar (solo este dispositivo)
-                </button>
-              </div>
-
-              {/* Help */}
-              <div className="border-t pt-4">
-                <button
-                  onClick={() => setShowTokenHelp(!showTokenHelp)}
-                  className="text-xs text-muted-foreground hover:text-foreground w-full text-center flex items-center justify-center gap-1"
-                >
-                  {showTokenHelp ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                  Como crear un token de GitHub
-                </button>
-                <AnimatePresence>
-                  {showTokenHelp && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="mt-3 text-xs text-muted-foreground space-y-2 bg-muted/50 rounded-lg p-3">
-                        <p className="font-medium text-foreground">Pasos para crear tu token:</p>
-                        <ol className="list-decimal list-inside space-y-1">
-                          <li>Andá a github.com y logueate</li>
-                          <li>Abri Settings (tu foto de perfil arriba a la derecha)</li>
-                          <li>Scrollea hasta el final y hacé clic en {"<Developer settings>"}</li>
-                          <li>Hacé clic en {"<Personal access tokens>"} → {"<Tokens (classic)>"}</li>
-                          <li>Hacé clic en {"<Generate new token>"}</li>
-                          <li>Ponle un nombre (ej: "MiFinanzas")</li>
-                          <li>Marca solo el scope: <strong>gist</strong></li>
-                          <li>Hacé clic en {"<Generate token>"}</li>
-                          <li>Copia el token que empieza con <code className="bg-muted px-1 rounded">ghp_</code></li>
-                        </ol>
-                        <p className="text-xs">El token se guarda solo en tu navegador. Nunca se comparte.</p>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
+              {/* Skip option (only for first time) */}
+              {isFirstTime && (
+                <div className="text-center">
+                  <button
+                    onClick={() => {
+                      setIsLoggedIn(true);
+                      setGithubUser('');
+                      toast.info('Modo sin contraseña. Tus datos se guardan sin proteccion.');
+                    }}
+                    className="text-xs text-muted-foreground hover:text-foreground underline"
+                  >
+                    Usar sin contraseña
+                  </button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </motion.div>
@@ -1508,55 +1566,69 @@ export default function Home() {
               <span className="text-sm font-medium">{formatCurrency(settings?.initialBalance ?? 0)}</span>
             </div>
 
-            {/* Change token (only for logged-in users) */}
-            {githubUser !== 'Offline' && (
-              <div
-                className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
-                onClick={() => { setShowSettings(false); setShowChangeToken(true); setNewToken(''); setNewTokenError(''); }}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="h-9 w-9 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                    <Key className="h-4 w-4 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Cambiar token</p>
-                    <p className="text-xs text-muted-foreground">Actualizar token de GitHub ({githubUser})</p>
-                  </div>
+            {/* Change password */}
+            <div
+              className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
+              onClick={() => { setShowSettings(false); setShowChangePassword(true); setCurrentPassInput(''); setNewPassInput(''); setConfirmPassInput(''); setShowChangePassFields(false); setChangePassError(''); }}
+            >
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                  <Key className="h-4 w-4 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Cambiar contraseña</p>
+                  <p className="text-xs text-muted-foreground">Modificar tu contraseña de acceso</p>
                 </div>
               </div>
-            )}
+            </div>
 
-            {/* Force sync */}
-            {githubUser !== 'Offline' && (
-              <div
-                className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
-                onClick={() => { setShowSettings(false); handleForceSync(); }}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="h-9 w-9 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-                    <RefreshCw className="h-4 w-4 text-amber-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Forzar sincronizacion</p>
-                    <p className="text-xs text-muted-foreground">Subir datos ahora a GitHub</p>
+            {/* Sync with GitHub */}
+            {githubUser ? (
+              <>
+                {/* Force sync */}
+                <div
+                  className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
+                  onClick={() => { setShowSettings(false); handleForceSync(); }}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                      <RefreshCw className="h-4 w-4 text-amber-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">Forzar sincronizacion</p>
+                      <p className="text-xs text-muted-foreground">Subir datos ahora ({githubUser})</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
 
-            {/* Logout (only for logged-in users) */}
-            {githubUser !== 'Offline' && (
+                {/* Disconnect sync */}
+                <div
+                  className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
+                  onClick={handleDisconnectSync}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+                      <CloudOff className="h-4 w-4 text-orange-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">Desactivar sincronizacion</p>
+                      <p className="text-xs text-muted-foreground">Dejar de sincronizar con GitHub</p>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
               <div
                 className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
-                onClick={() => { setShowSettings(false); handleLogout(); }}
+                onClick={() => { setShowSettings(false); setShowSyncSetup(true); setSyncSetupToken(''); setSyncSetupError(''); }}
               >
                 <div className="flex items-center gap-3">
-                  <div className="h-9 w-9 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
-                    <LogOut className="h-4 w-4 text-orange-600" />
+                  <div className="h-9 w-9 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                    <Cloud className="h-4 w-4 text-purple-600" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium">Cerrar sesion</p>
-                    <p className="text-xs text-muted-foreground">Desconectar sync con GitHub</p>
+                    <p className="text-sm font-medium">Sincronizar entre dispositivos</p>
+                    <p className="text-xs text-muted-foreground">Conectar con GitHub para sincronizar</p>
                   </div>
                 </div>
               </div>
@@ -1614,52 +1686,140 @@ export default function Home() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Change Token Dialog ── */}
-      <Dialog open={showChangeToken} onOpenChange={setShowChangeToken}>
+      {/* ── Change Password Dialog ── */}
+      <Dialog open={showChangePassword} onOpenChange={setShowChangePassword}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Key className="h-5 w-5 text-blue-600" />
-              Cambiar token de GitHub
+              Cambiar contraseña
             </DialogTitle>
             <DialogDescription>
-              Ingresa tu nuevo token de GitHub. El anterior va a dejar de funcionar.
+              {!showChangePassFields
+                ? 'Primero verificamos que sos vos ingresando tu contraseña actual.'
+                : 'Ahora ingresá tu nueva contraseña.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="new-token">Nuevo Token</Label>
-              <div className="relative">
+            {!showChangePassFields ? (
+              <div className="space-y-2">
+                <Label htmlFor="current-pass">Contraseña actual</Label>
                 <Input
-                  id="new-token"
+                  id="current-pass"
                   type="password"
-                  placeholder="ghp_xxxxxxxxxxxx"
-                  value={newToken}
-                  onChange={(e) => { setNewToken(e.target.value); setNewTokenError(''); }}
-                  className="pr-10 font-mono text-sm"
-                  onKeyDown={(e) => { if (e.key === 'Enter' && newToken.trim()) handleChangeToken(); }}
+                  placeholder="Tu contraseña actual"
+                  value={currentPassInput}
+                  onChange={(e) => { setCurrentPassInput(e.target.value); setChangePassError(''); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && currentPassInput) handleChangePassword(); }}
+                  autoFocus
                 />
               </div>
-            </div>
-            {newTokenError && (
+            ) : (
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="new-pass">Nueva contraseña</Label>
+                  <Input
+                    id="new-pass"
+                    type="password"
+                    placeholder="Mínimo 4 caracteres"
+                    value={newPassInput}
+                    onChange={(e) => { setNewPassInput(e.target.value); setChangePassError(''); }}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="confirm-pass">Confirmar contraseña</Label>
+                  <Input
+                    id="confirm-pass"
+                    type="password"
+                    placeholder="Repetí la nueva contraseña"
+                    value={confirmPassInput}
+                    onChange={(e) => { setConfirmPassInput(e.target.value); setChangePassError(''); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && newPassInput && confirmPassInput) handleChangePassword(); }}
+                  />
+                </div>
+              </div>
+            )}
+            {changePassError && (
               <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
                 <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                <span>{newTokenError}</span>
+                <span>{changePassError}</span>
               </div>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowChangeToken(false)}>Cancelar</Button>
-            <Button onClick={handleChangeToken} disabled={!newToken.trim() || newTokenLoading} className="gap-2 bg-blue-600 hover:bg-blue-700">
-              {newTokenLoading ? (
+            <Button variant="outline" onClick={() => setShowChangePassword(false)}>
+              {showChangePassFields ? 'Atras' : 'Cancelar'}
+            </Button>
+            <Button onClick={handleChangePassword} disabled={changePassLoading} className="gap-2 bg-blue-600 hover:bg-blue-700">
+              {changePassLoading ? (
                 <>
                   <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   Verificando...
                 </>
               ) : (
                 <>
-                  <Key className="h-4 w-4" />
-                  Guardar token
+                  <Check className="h-4 w-4" />
+                  {showChangePassFields ? 'Guardar' : 'Continuar'}
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Sync Setup Dialog ── */}
+      <Dialog open={showSyncSetup} onOpenChange={setShowSyncSetup}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Cloud className="h-5 w-5 text-purple-600" />
+              Sincronizar entre dispositivos
+            </DialogTitle>
+            <DialogDescription>
+              Conectá con GitHub para sincronizar tus datos entre el celular y la PC.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="sync-token">Token de GitHub</Label>
+              <Input
+                id="sync-token"
+                type="password"
+                placeholder="ghp_xxxxxxxxxxxx"
+                value={syncSetupToken}
+                onChange={(e) => { setSyncSetupToken(e.target.value); setSyncSetupError(''); }}
+                className="font-mono text-sm"
+                onKeyDown={(e) => { if (e.key === 'Enter' && syncSetupToken.trim()) handleSetupSync(); }}
+              />
+            </div>
+            {syncSetupError && (
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>{syncSetupError}</span>
+              </div>
+            )}
+            <div className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-3 space-y-2">
+              <p className="font-medium text-foreground">Como crear el token:</p>
+              <ol className="list-decimal list-inside space-y-1">
+                <li>Andá a github.com → Settings → Developer settings</li>
+                <li>Personal access tokens → Tokens (classic)</li>
+                <li>Generate new token, marca solo <strong>gist</strong></li>
+                <li>Copia el token que empieza con <code className="bg-muted px-1 rounded">ghp_</code></li>
+              </ol>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSyncSetup(false)}>Cancelar</Button>
+            <Button onClick={handleSetupSync} disabled={!syncSetupToken.trim() || syncSetupLoading} className="gap-2 bg-purple-600 hover:bg-purple-700">
+              {syncSetupLoading ? (
+                <>
+                  <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Conectando...
+                </>
+              ) : (
+                <>
+                  <Cloud className="h-4 w-4" />
+                  Conectar sync
                 </>
               )}
             </Button>
@@ -1712,7 +1872,7 @@ function DashboardTab({
             <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Dashboard</h2>
             <p className="text-muted-foreground text-xs sm:text-sm">Resumen de tus finanzas</p>
           </div>
-          {githubUser !== 'Offline' && (
+          {githubUser && (
             <div className="lg:hidden flex items-center gap-1 text-xs text-muted-foreground ml-2">
               {syncStatus === 'syncing' ? (
                 <RefreshCw className="h-3 w-3 animate-spin text-amber-500" />

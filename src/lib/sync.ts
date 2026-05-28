@@ -1,3 +1,56 @@
+// ─── Password Auth ──────────────────────────────────────────
+const PASS_HASH_KEY = 'mf_pass_hash';
+const PASS_SALT_KEY = 'mf_pass_salt';
+
+function generateSalt(): string {
+  const arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function hashPassword(password: string, salt: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(salt + password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+export function hasPassword(): boolean {
+  if (typeof window === 'undefined') return false;
+  return !!localStorage.getItem(PASS_HASH_KEY) && !!localStorage.getItem(PASS_SALT_KEY);
+}
+
+export async function createPassword(password: string): Promise<void> {
+  if (typeof window === 'undefined') return;
+  const salt = generateSalt();
+  const hash = await hashPassword(password, salt);
+  localStorage.setItem(PASS_HASH_KEY, hash);
+  localStorage.setItem(PASS_SALT_KEY, salt);
+}
+
+export async function verifyPassword(password: string): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  const storedHash = localStorage.getItem(PASS_HASH_KEY);
+  const salt = localStorage.getItem(PASS_SALT_KEY);
+  if (!storedHash || !salt) return false;
+  const hash = await hashPassword(password, salt);
+  return hash === storedHash;
+}
+
+export async function changePassword(oldPassword: string, newPassword: string): Promise<boolean> {
+  const valid = await verifyPassword(oldPassword);
+  if (!valid) return false;
+  await createPassword(newPassword);
+  return true;
+}
+
+export function clearPassword(): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(PASS_HASH_KEY);
+  localStorage.removeItem(PASS_SALT_KEY);
+}
+
 // ─── GitHub Gist Sync ──────────────────────────────────────────
 // Stores all app data in a private GitHub Gist for cross-device sync.
 
@@ -32,6 +85,11 @@ export function clearStoredAuth(): void {
   localStorage.removeItem(GIST_ID_KEY);
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem(LAST_SYNC_KEY);
+}
+
+export function hasStoredSync(): boolean {
+  if (typeof window === 'undefined') return false;
+  return !!localStorage.getItem(AUTH_KEY) && !!localStorage.getItem(GIST_ID_KEY);
 }
 
 export function getLastSync(): string | null {
