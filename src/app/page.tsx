@@ -23,7 +23,7 @@ import {
   Star,
   Crown,
   PartyPopper,
-  Menu,
+  // Menu icon no longer used with bottom nav
   Wallet,
   Activity,
 } from 'lucide-react';
@@ -74,13 +74,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Sheet,
-  SheetContent,
-  SheetTrigger,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
+// Sheet/Menu removed - using bottom nav on mobile instead
 import {
   Popover,
   PopoverContent,
@@ -138,6 +132,16 @@ export default function Home() {
 
   // Form states
   const [newTx, setNewTx] = useState({ type: 'expense' as 'income' | 'expense', amount: '', description: '', categoryId: '', date: new Date() });
+
+  // Quick add helpers
+  const openAddExpense = () => {
+    setNewTx({ type: 'expense', amount: '', description: '', categoryId: '', date: new Date() });
+    setShowAddTx(true);
+  };
+  const openAddIncome = () => {
+    setNewTx({ type: 'income', amount: '', description: '', categoryId: '', date: new Date() });
+    setShowAddTx(true);
+  };
   const [newGoal, setNewGoal] = useState({ name: '', description: '', targetAmount: '', deadline: undefined as Date | undefined, color: '#6366f1' });
   const [savingsAmount, setSavingsAmount] = useState('');
   const [initialBalance, setInitialBalance] = useState('');
@@ -423,25 +427,36 @@ export default function Home() {
         <SidebarContent />
       </aside>
 
-      {/* Mobile Sheet */}
-      <Sheet>
-        <SheetTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="fixed top-4 left-4 z-50 lg:hidden bg-white shadow-md rounded-xl border"
+      {/* Mobile Bottom Nav */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t shadow-[0_-2px_10px_rgba(0,0,0,0.06)] safe-area-bottom">
+        <div className="flex items-center justify-around h-16">
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            className={`flex flex-col items-center justify-center gap-0.5 w-full h-full transition-colors ${activeTab === 'dashboard' ? 'text-emerald-600' : 'text-gray-400'}`}
           >
-            <Menu className="h-5 w-5" />
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="left" className="w-64 p-0">
-          <SidebarContent />
-        </SheetContent>
-      </Sheet>
+            <BarChart3 className="h-5 w-5" />
+            <span className="text-[10px] font-medium">Inicio</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('transactions')}
+            className={`flex flex-col items-center justify-center gap-0.5 w-full h-full transition-colors ${activeTab === 'transactions' ? 'text-emerald-600' : 'text-gray-400'}`}
+          >
+            <Activity className="h-5 w-5" />
+            <span className="text-[10px] font-medium">Movimientos</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('goals')}
+            className={`flex flex-col items-center justify-center gap-0.5 w-full h-full transition-colors ${activeTab === 'goals' ? 'text-emerald-600' : 'text-gray-400'}`}
+          >
+            <Target className="h-5 w-5" />
+            <span className="text-[10px] font-medium">Metas</span>
+          </button>
+        </div>
+      </nav>
 
       {/* Main Content */}
       <main className="flex-1 lg:ml-64 min-h-screen">
-        <div className="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 pt-16 lg:pt-8">
+        <div className="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8">
           <AnimatePresence mode="wait">
             {activeTab === 'dashboard' && (
               <motion.div key="dashboard" {...FADE_IN}>
@@ -457,6 +472,8 @@ export default function Home() {
                     setShowEditBalance(true);
                   }}
                   onViewAllTx={() => setActiveTab('transactions')}
+                  onAddIncome={openAddIncome}
+                  onAddExpense={openAddExpense}
                 />
               </motion.div>
             )}
@@ -858,6 +875,8 @@ function DashboardTab({
   currentBalance,
   onEditBalance,
   onViewAllTx,
+  onAddIncome,
+  onAddExpense,
 }: {
   settings: Settings | null;
   stats: Stats | null;
@@ -867,6 +886,8 @@ function DashboardTab({
   currentBalance: number;
   onEditBalance: () => void;
   onViewAllTx: () => void;
+  onAddIncome: () => void;
+  onAddExpense: () => void;
 }) {
   const isBalanceZero = !settings || settings.initialBalance === 0;
   const recentTransactions = transactions.slice(0, 5);
@@ -874,13 +895,56 @@ function DashboardTab({
   const chartData = stats?.last6Months ?? [];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
+      {/* Header + Quick Actions */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Dashboard</h2>
-          <p className="text-muted-foreground text-sm">Resumen de tus finanzas</p>
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Dashboard</h2>
+          <p className="text-muted-foreground text-xs sm:text-sm">Resumen de tus finanzas</p>
+        </div>
+        <div className="hidden sm:block lg:hidden">
+          <Button variant="ghost" size="icon" className="bg-white shadow-sm rounded-xl border" onClick={() => {}}>
+            <Wallet className="h-5 w-5" />
+          </Button>
         </div>
       </div>
+
+      {/* Quick Action Buttons - Gasto & Ingreso */}
+      <motion.div
+        className="grid grid-cols-2 gap-3"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05 }}
+      >
+        <button
+          onClick={onAddExpense}
+          className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-rose-500 to-rose-600 p-4 text-left shadow-md active:scale-[0.97] transition-transform"
+        >
+          <div className="flex items-center gap-3">
+            <div className="h-11 w-11 rounded-xl bg-white/20 flex items-center justify-center">
+              <ArrowDownRight className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <p className="text-white font-bold text-base">Gasto</p>
+              <p className="text-rose-100 text-xs">Registrar gasto</p>
+            </div>
+          </div>
+        </button>
+        <button
+          onClick={onAddIncome}
+          className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 p-4 text-left shadow-md active:scale-[0.97] transition-transform"
+        >
+          <div className="flex items-center gap-3">
+            <div className="h-11 w-11 rounded-xl bg-white/20 flex items-center justify-center">
+              <ArrowUpRight className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <p className="text-white font-bold text-base">Ingreso</p>
+              <p className="text-emerald-100 text-xs">Registrar ingreso</p>
+            </div>
+          </div>
+        </button>
+      </motion.div>
 
       {/* Initial Balance Card */}
       {isBalanceZero && (
