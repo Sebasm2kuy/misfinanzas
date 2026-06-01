@@ -29,8 +29,7 @@ export const viewport: Viewport = {
   userScalable: false,
 };
 
-// This version must change on every deploy that needs cache busting
-const APP_CACHE_VERSION = 'v3.7-inline-fix';
+const APP_CACHE_VERSION = 'v3.8-separate-key';
 
 export default function RootLayout({
   children,
@@ -44,10 +43,10 @@ export default function RootLayout({
         <meta httpEquiv="Pragma" content="no-cache" />
         <meta httpEquiv="Expires" content="0" />
 
-        {/* CRITICAL FIX: This script runs BEFORE any JS chunks load.
-            It ensures projected incomes are ALWAYS in localStorage,
-            even if the Gist sync overwrites them with empty data.
-            This is immune to browser caching of JS chunks. */}
+        {/* This script writes projected incomes to a SEPARATE localStorage key
+            that is NOT in the Gist sync list. The Gist sync only syncs:
+            mf_settings, mf_categories, mf_transactions, mf_goals, mf_accounts, mf_seeded
+            So mf_projected_incomes will NEVER be overwritten by sync. */}
         <script dangerouslySetInnerHTML={{
           __html: `
             (function() {
@@ -59,43 +58,37 @@ export default function RootLayout({
                   {id:'pi-4',date:'2026-07-30',amount:9000,description:'Ingreso extra',received:false},
                   {id:'pi-5',date:'2026-08-03',amount:40000,description:'Sueldo',received:false}
                 ];
-                var raw = localStorage.getItem('mf_goals');
-                if (!raw) return;
-                var goals = JSON.parse(raw);
-                var changed = false;
-                for (var i = 0; i < goals.length; i++) {
-                  var g = goals[i];
-                  if (g.id === 'quinceanera-2026') {
-                    if (!g.projectedIncomes || g.projectedIncomes.length === 0) {
-                      g.projectedIncomes = DEFAULT_INCOMES;
-                      changed = true;
-                    } else {
-                      // Merge: add any missing incomes, preserve received state
-                      for (var j = 0; j < DEFAULT_INCOMES.length; j++) {
-                        var found = false;
-                        for (var k = 0; k < g.projectedIncomes.length; k++) {
-                          if (g.projectedIncomes[k].id === DEFAULT_INCOMES[j].id) {
-                            found = true;
-                            break;
-                          }
-                        }
-                        if (!found) {
-                          g.projectedIncomes.push(DEFAULT_INCOMES[j]);
-                          changed = true;
-                        }
+                var KEY = 'mf_projected_incomes';
+                var existing = localStorage.getItem(KEY);
+                if (!existing) {
+                  localStorage.setItem(KEY, JSON.stringify(DEFAULT_INCOMES));
+                } else {
+                  // Merge: add any missing default incomes, preserve received state
+                  var stored = JSON.parse(existing);
+                  var changed = false;
+                  for (var i = 0; i < DEFAULT_INCOMES.length; i++) {
+                    var found = false;
+                    for (var j = 0; j < stored.length; j++) {
+                      if (stored[j].id === DEFAULT_INCOMES[i].id) {
+                        found = true;
+                        break;
                       }
                     }
+                    if (!found) {
+                      stored.push(DEFAULT_INCOMES[i]);
+                      changed = true;
+                    }
                   }
-                }
-                if (changed) {
-                  localStorage.setItem('mf_goals', JSON.stringify(goals));
+                  if (changed) {
+                    localStorage.setItem(KEY, JSON.stringify(stored));
+                  }
                 }
               } catch(e) {}
             })();
           `
         }} />
 
-        {/* Cache bust: force new URL if version changed */}
+        {/* Cache bust */}
         <script dangerouslySetInnerHTML={{
           __html: `
             (function() {
@@ -118,15 +111,14 @@ export default function RootLayout({
                       regs.forEach(function(r) { r.unregister(); });
                     });
                   }
-                  var newUrl = location.pathname + '?_cb=' + Date.now() + location.hash;
-                  location.replace(newUrl);
+                  location.replace(location.pathname + '?_cb=' + Date.now() + location.hash);
                 }
               }
             })();
           `
         }} />
 
-        {/* Register service worker to prevent future caching */}
+        {/* Service worker */}
         <script dangerouslySetInnerHTML={{
           __html: `
             (function() {

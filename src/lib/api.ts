@@ -400,6 +400,20 @@ export const deleteGoalItem = (goalId: string, itemId: string): { success: boole
 };
 
 export const toggleProjectedIncome = (goalId: string, incomeId: string): { success: boolean } => {
+  // ALSO update the separate stable key that Gist sync doesn't touch
+  const STABLE_KEY = 'mf_projected_incomes';
+  try {
+    const stableRaw = localStorage.getItem(STABLE_KEY);
+    if (stableRaw) {
+      const stableIncomes = JSON.parse(stableRaw);
+      const sIdx = stableIncomes.findIndex((pi: any) => pi.id === incomeId);
+      if (sIdx !== -1) {
+        stableIncomes[sIdx].received = !stableIncomes[sIdx].received;
+        localStorage.setItem(STABLE_KEY, JSON.stringify(stableIncomes));
+      }
+    }
+  } catch {}
+
   const goals = getGoals();
   const idx = goals.findIndex(g => g.id === goalId);
   if (idx === -1) return { success: true };

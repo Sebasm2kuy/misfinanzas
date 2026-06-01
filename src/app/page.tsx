@@ -1087,7 +1087,7 @@ export default function Home() {
 
   // ─── RENDER ───────────────────────────────────────────────
   // Cache-bust version - forces new chunk hash on every deploy
-  const APP_VERSION = 'v3.7-inline-fix';
+  const APP_VERSION = 'v3.8-separate-key';
 
   return (
     <div className="min-h-screen flex bg-slate-50" data-app-version={APP_VERSION}>
@@ -3253,7 +3253,7 @@ function TransactionsTab({
 }
 
 // ─── PLAN DE AHORRO TAB ────────────────────────────────────────
-// Fallback projected incomes - always available regardless of migrations/Gist
+// Hardcoded projected incomes (embedded in JS bundle - immune to Gist sync)
 const FALLBACK_QUINCE_INCOMES: Array<{ id: string; date: string; amount: number; description: string; received: boolean }> = [
   { id: 'pi-1', date: '2026-06-05', amount: 41760, description: 'Sueldo', received: false },
   { id: 'pi-2', date: '2026-06-20', amount: 21000, description: '1/2 Aguinaldo', received: false },
@@ -3261,6 +3261,18 @@ const FALLBACK_QUINCE_INCOMES: Array<{ id: string; date: string; amount: number;
   { id: 'pi-4', date: '2026-07-30', amount: 9000, description: 'Ingreso extra', received: false },
   { id: 'pi-5', date: '2026-08-03', amount: 40000, description: 'Sueldo', received: false },
 ];
+
+// Read projected incomes from SEPARATE localStorage key that Gist sync does NOT touch
+function getStableProjectedIncomes(): Array<{ id: string; date: string; amount: number; description: string; received: boolean }> {
+  try {
+    const raw = localStorage.getItem('mf_projected_incomes');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  return FALLBACK_QUINCE_INCOMES;
+}
 
 function PlanTab({
   goals,
@@ -3279,17 +3291,13 @@ function PlanTab({
   onDeleteItem: (goalId: string, itemId: string) => void;
   onAddItem: (goalId: string) => void;
 }) {
-  // ALWAYS use hardcoded projected incomes for Quinceañera goal
-  // This is completely independent of localStorage/Gist - data is embedded in JS
+  // For Quinceañera: ALWAYS use stable projected incomes from separate localStorage key
+  // This key is NEVER synced to Gist, so sync can NEVER overwrite it
+  const stableIncomes = getStableProjectedIncomes();
+
   const safeGoals = goals.map(g => {
     if (g.id === 'quinceanera-2026') {
-      // Merge: use hardcoded data, but preserve 'received' state from stored data
-      const stored = g.projectedIncomes || [];
-      const merged = FALLBACK_QUINCE_INCOMES.map(fi => {
-        const match = stored.find(s => s.id === fi.id && s.received);
-        return match ? { ...fi, received: true } : fi;
-      });
-      return { ...g, projectedIncomes: merged };
+      return { ...g, projectedIncomes: stableIncomes };
     }
     return g;
   });
@@ -3877,11 +3885,7 @@ function GoalsTab({
 
                   {/* Projected Incomes Summary (always shown for Quinceañera) */}
                   {isQuin && (() => {
-                    const stored = goal.projectedIncomes || [];
-                    const incomes = FALLBACK_QUINCE_INCOMES.map(fi => {
-                      const match = stored.find(s => s.id === fi.id && s.received);
-                      return match ? { ...fi, received: true } : fi;
-                    });
+                    const incomes = getStableProjectedIncomes();
                     const total = incomes.reduce((s, pi) => s + pi.amount, 0);
                     const received = incomes.filter(pi => pi.received).reduce((s, pi) => s + pi.amount, 0);
                     const pending = total - received;
