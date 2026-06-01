@@ -1,4 +1,4 @@
-import { Account, Category, Transaction, Goal, GoalItem, Settings, Stats } from './types';
+import { Account, Category, Transaction, Goal, GoalItem, ProjectedIncome, Settings, Stats } from './types';
 
 // ─── localStorage helpers ────────────────────────────────────
 const KEYS = {
@@ -253,15 +253,18 @@ export const deleteTransaction = (id: string): { success: boolean } => {
 // ─── Goals ───────────────────────────────────────────────────
 export const getGoals = (): Goal[] => {
   const goals = load<Goal[]>(KEYS.goals, []);
-  // Migration: add projectedIncomes to goals that don't have it
+  // Migration: add projectedIncomes to goals that don't have it or have empty array
   let migrated = false;
   const updated = goals.map(g => {
-    if (!g.projectedIncomes) {
-      migrated = true;
+    if (!g.projectedIncomes || g.projectedIncomes.length === 0) {
       if (g.id === 'quinceanera-2026') {
+        migrated = true;
         return { ...g, projectedIncomes: DEFAULT_QUINCE_PROJECTED };
       }
-      return { ...g, projectedIncomes: [] };
+      if (!g.projectedIncomes) {
+        migrated = true;
+        return { ...g, projectedIncomes: [] };
+      }
     }
     return g;
   });
