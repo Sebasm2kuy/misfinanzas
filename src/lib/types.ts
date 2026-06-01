@@ -70,3 +70,13 @@ export interface Stats {
   last6Months: { month: string; income: number; expense: number }[];
   topExpenseCategories: { name: string; color: string; icon: string; total: number }[];
 }
+
+export interface Account {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  balance: number;
+  createdAt: string;
+  updatedAt: string;
+}

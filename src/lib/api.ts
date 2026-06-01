@@ -166,6 +166,22 @@ export const deleteTransaction = (id: string): { success: boolean } => {
   return { success: true };
 };
 
+export const updateTransaction = (id: string, data: {
+  type?: string;
+  amount?: number;
+  description?: string;
+  categoryId?: string | null;
+  accountId?: string | null;
+  date?: string;
+}): Transaction => {
+  const txs = load<Transaction[]>(KEYS.transactions, []);
+  const idx = txs.findIndex(t => t.id === id);
+  if (idx === -1) throw new Error('Transacción no encontrada');
+  txs[idx] = { ...txs[idx], ...data, updatedAt: now() };
+  save(KEYS.transactions, txs);
+  return txs[idx];
+};
+
 // ─── Goals ───────────────────────────────────────────────────
 export const getGoals = (): Goal[] => {
   const goals = load<Goal[]>(KEYS.goals, []);
@@ -359,6 +375,86 @@ export const toggleStableProjectedIncome = (incomeId: string): { success: boolea
   incomes[idx].received = !incomes[idx].received;
   localStorage.setItem(STABLE_INCOMES_KEY, JSON.stringify(incomes));
   return { success: true };
+};
+
+export const toggleProjectedIncome = (goalId: string, incomeId: string): { success: boolean } => {
+  try {
+    const incomes = getStableProjectedIncomes();
+    const idx = incomes.findIndex(pi => pi.id === incomeId);
+    if (idx !== -1) {
+      incomes[idx].received = !incomes[idx].received;
+      localStorage.setItem(STABLE_INCOMES_KEY, JSON.stringify(incomes));
+    }
+  } catch {}
+  const goals = load<Goal[]>(KEYS.goals, []);
+  const gIdx = goals.findIndex(g => g.id === goalId);
+  if (gIdx !== -1 && goals[gIdx].projectedIncomes) {
+    const piIdx = goals[gIdx].projectedIncomes.findIndex(pi => pi.id === incomeId);
+    if (piIdx !== -1) {
+      goals[gIdx].projectedIncomes[piIdx].received = !goals[gIdx].projectedIncomes[piIdx].received;
+      save(KEYS.goals, goals);
+    }
+  }
+  return { success: true };
+};
+
+// ─── Accounts ──────────────────────────────────────────────
+const ACCOUNTS_KEY = 'mf_accounts';
+
+export interface Account {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  balance: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const getAccounts = (): Account[] => {
+  return load<Account[]>(ACCOUNTS_KEY, []);
+};
+
+export const createAccount = (data: { name: string; icon: string; color: string; balance: number }): Account => {
+  const accounts = getAccounts();
+  const account: Account = {
+    id: 'acct-' + uid(),
+    name: data.name,
+    icon: data.icon,
+    color: data.color,
+    balance: data.balance,
+    createdAt: now(),
+    updatedAt: now(),
+  };
+  accounts.push(account);
+  save(ACCOUNTS_KEY, accounts);
+  return account;
+};
+
+export const updateAccount = (id: string, data: { name?: string; icon?: string; color?: string; balance?: number }): Account => {
+  const accounts = getAccounts();
+  const idx = accounts.findIndex(a => a.id === id);
+  if (idx === -1) throw new Error('Cuenta no encontrada');
+  accounts[idx] = { ...accounts[idx], ...data, updatedAt: now() };
+  save(ACCOUNTS_KEY, accounts);
+  return accounts[idx];
+};
+
+export const deleteAccount = (id: string): { success: boolean } => {
+  const accounts = getAccounts().filter(a => a.id !== id);
+  save(ACCOUNTS_KEY, accounts);
+  return { success: true };
+};
+
+export const getAccountStats = (): Array<{ account: Account; income: number; expense: number; currentBalance: number }> => {
+  const accounts = getAccounts();
+  const txs = load<Transaction[]>(KEYS.transactions, []);
+  return accounts.map(account => {
+    const accTxs = txs.filter(t => t.accountId === account.id);
+    const income = accTxs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const expense = accTxs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    return { account, income, expense, currentBalance: account.balance + income - expense };
+  });
 };
 
 // ─── Stats (computed client-side) ────────────────────────────
