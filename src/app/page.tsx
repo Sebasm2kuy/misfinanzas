@@ -1066,7 +1066,7 @@ export default function Home() {
 
   // ─── RENDER ───────────────────────────────────────────────
   // Cache-bust version - forces new chunk hash on every deploy
-  const APP_VERSION = 'v3.3-sync-fix';
+  const APP_VERSION = 'v3.4-mobile-fix';
 
   return (
     <div className="min-h-screen flex bg-slate-50" data-app-version={APP_VERSION}>
@@ -1310,9 +1310,9 @@ export default function Home() {
                 </SelectContent>
               </Select>
             </div>
-            {accounts.length > 0 && (
-              <div className="space-y-2">
-                <Label>Cuenta</Label>
+            <div className="space-y-2">
+              <Label>Cuenta</Label>
+              {accounts.length > 0 ? (
                 <Select
                   value={newTx.accountId}
                   onValueChange={(v) => setNewTx({ ...newTx, accountId: v })}
@@ -1331,8 +1331,11 @@ export default function Home() {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-            )}
+              ) : (
+                <p className="text-sm text-muted-foreground">No hay cuentas creadas. Ve a la sección de Cuentas para agregar una.</p>
+              )}
+              <p className="text-xs text-muted-foreground">La cuenta afecta el saldo de tu cuenta bancaria</p>
+            </div>
             <div className="space-y-2">
               <Label>Fecha</Label>
               <Popover>
@@ -3049,10 +3052,29 @@ function TransactionsTab({
         </div>
       </div>
 
+      {/* Mobile Action Buttons */}
+      <div className="lg:hidden flex gap-2">
+        <button
+          onClick={onAddTx}
+          className="flex-1 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 p-3 text-center shadow-md active:scale-[0.97] transition-transform"
+        >
+          <Plus className="h-5 w-5 text-white mx-auto mb-1" />
+          <span className="text-white text-xs font-bold">Agregar</span>
+        </button>
+        <button
+          onClick={onImportExcel}
+          className="rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 p-3 text-center shadow-md active:scale-[0.97] transition-transform"
+          style={{ width: '56px' }}
+        >
+          <FileSpreadsheet className="h-5 w-5 text-white mx-auto mb-1" />
+          <span className="text-white text-[10px] font-bold">Excel</span>
+        </button>
+      </div>
+
       {/* Filters */}
       <Card>
         <CardContent className="p-3 sm:p-4">
-          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -3064,7 +3086,7 @@ function TransactionsTab({
             </div>
             <div className="flex gap-2">
               <Select value={txFilterType} onValueChange={(v) => setTxFilterType(v as 'all' | 'income' | 'expense')}>
-                <SelectTrigger className="w-28 sm:w-36 h-10">
+                <SelectTrigger className="flex-1 min-w-0 sm:w-36 h-10">
                   <Filter className="h-4 w-4 mr-1.5" />
                   <SelectValue />
                 </SelectTrigger>
@@ -3075,12 +3097,12 @@ function TransactionsTab({
                 </SelectContent>
               </Select>
               <Select value={txFilterMonth} onValueChange={setTxFilterMonth}>
-                <SelectTrigger className="w-44">
+                <SelectTrigger className="flex-1 min-w-0 sm:w-44 h-10">
                   <Calendar className="h-4 w-4 mr-2" />
-                  <SelectValue placeholder="Todos los meses" />
+                  <SelectValue placeholder="Mes" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos los meses</SelectItem>
+                  <SelectItem value="all">Todos</SelectItem>
                   {monthOptions.map((m) => (
                     <SelectItem key={m} value={m}>
                       {monthLabel(m)}
@@ -3104,43 +3126,44 @@ function TransactionsTab({
               transition={{ delay: Math.min(idx * 0.03, 0.3) }}
             >
               <Card className="hover:shadow-md transition-shadow">
-                <CardContent className="p-4">
+                <CardContent className="p-3 sm:p-4">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                       <div
-                        className="h-11 w-11 rounded-xl flex items-center justify-center shrink-0"
+                        className="h-9 w-9 sm:h-11 sm:w-11 rounded-lg sm:rounded-xl flex items-center justify-center shrink-0"
                         style={{ backgroundColor: (tx.category?.color ?? '#6b7280') + '20' }}
                       >
                         <DynamicIcon
                           name={tx.category?.icon ?? 'Tag'}
-                          className="h-5 w-5"
+                          className="h-4 w-4 sm:h-5 sm:w-5"
                           style={{ color: tx.category?.color ?? '#6b7280' }}
                         />
                       </div>
                       <div className="min-w-0">
                         <p className="font-medium text-sm truncate">{tx.description}</p>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <span>{formatDate(tx.date)}</span>
+                        <div className="flex items-center gap-1 sm:gap-2 text-[11px] sm:text-xs text-muted-foreground">
+                          <span>{formatDateShort(tx.date)}</span>
                           {tx.category && (
                             <>
                               <span>·</span>
-                              <Badge variant="secondary" className="text-xs px-1.5 py-0">
-                                {tx.category.name}
-                              </Badge>
+                              <span>{tx.category.name}</span>
                             </>
                           )}
                           {tx.accountId && (
-                            <Badge variant="outline" className="text-xs px-1.5 py-0 gap-1">
-                              <Wallet className="h-2.5 w-2.5" />
-                              {accountsList.find(a => a.id === tx.accountId)?.name || 'Cuenta'}
-                            </Badge>
+                            <>
+                              <span>·</span>
+                              <span className="flex items-center gap-0.5">
+                                <Wallet className="h-2.5 w-2.5" />
+                                {accountsList.find(a => a.id === tx.accountId)?.name || 'Cuenta'}
+                              </span>
+                            </>
                           )}
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3 shrink-0">
+                    <div className="flex items-center gap-1 sm:gap-3 shrink-0">
                       <span
-                        className={`text-base font-bold ${
+                        className={`text-sm sm:text-base font-bold whitespace-nowrap ${
                           tx.type === 'income' ? 'text-emerald-600' : 'text-rose-600'
                         }`}
                       >
@@ -3184,19 +3207,19 @@ function TransactionsTab({
       {/* Summary */}
       {transactions.length > 0 && (
         <Card>
-          <CardContent className="p-4">
-            <div className="grid grid-cols-3 gap-4 text-center">
+          <CardContent className="p-3 sm:p-4">
+            <div className="grid grid-cols-3 gap-2 sm:gap-4 text-center">
               <div>
-                <p className="text-xs text-muted-foreground mb-1">Ingresos</p>
-                <p className="font-bold text-emerald-600">{formatCurrency(filteredTotalIncome)}</p>
+                <p className="text-[10px] sm:text-xs text-muted-foreground mb-0.5 sm:mb-1">Ingresos</p>
+                <p className="font-bold text-sm sm:text-base text-emerald-600">{formatCurrency(filteredTotalIncome)}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground mb-1">Gastos</p>
-                <p className="font-bold text-rose-600">{formatCurrency(filteredTotalExpense)}</p>
+                <p className="text-[10px] sm:text-xs text-muted-foreground mb-0.5 sm:mb-1">Gastos</p>
+                <p className="font-bold text-sm sm:text-base text-rose-600">{formatCurrency(filteredTotalExpense)}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground mb-1">Balance Neto</p>
-                <p className={`font-bold ${filteredTotalIncome - filteredTotalExpense >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                <p className="text-[10px] sm:text-xs text-muted-foreground mb-0.5 sm:mb-1">Balance Neto</p>
+                <p className={`font-bold text-sm sm:text-base ${filteredTotalIncome - filteredTotalExpense >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                   {formatCurrency(filteredTotalIncome - filteredTotalExpense)}
                 </p>
               </div>
