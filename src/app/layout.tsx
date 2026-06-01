@@ -1,7 +1,9 @@
-import type { Metadata, Viewport } from "next";
+import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
+
+const APP_CACHE_VERSION = 'v4.0-plan-feature';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -22,15 +24,6 @@ export const metadata: Metadata = {
   },
 };
 
-export const viewport: Viewport = {
-  width: "device-width",
-  initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
-};
-
-const APP_CACHE_VERSION = 'v3.8-separate-key';
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -39,91 +32,38 @@ export default function RootLayout({
   return (
     <html lang="es" suppressHydrationWarning>
       <head>
-        <meta httpEquiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-        <meta httpEquiv="Pragma" content="no-cache" />
-        <meta httpEquiv="Expires" content="0" />
-
-        {/* This script keeps projected incomes in a separate localStorage key.
-            The sync layer now also uploads this key and merges it with the goal
-            data so GitHub restores cannot erase future planned incomes. */}
+        {/* Ensure stable projected incomes key always has data */}
         <script dangerouslySetInnerHTML={{
           __html: `
             (function() {
               try {
-                var DEFAULT_INCOMES = [
+                var KEY = 'mf_projected_incomes';
+                var DEFAULTS = [
                   {id:'pi-1',date:'2026-06-05',amount:41760,description:'Sueldo',received:false},
                   {id:'pi-2',date:'2026-06-20',amount:21000,description:'1/2 Aguinaldo',received:false},
                   {id:'pi-3',date:'2026-07-01',amount:40000,description:'Sueldo',received:false},
                   {id:'pi-4',date:'2026-07-30',amount:9000,description:'Ingreso extra',received:false},
                   {id:'pi-5',date:'2026-08-03',amount:40000,description:'Sueldo',received:false}
                 ];
-                var KEY = 'mf_projected_incomes';
-                var existing = localStorage.getItem(KEY);
-                if (!existing) {
-                  localStorage.setItem(KEY, JSON.stringify(DEFAULT_INCOMES));
-                } else {
-                  // Merge: add any missing default incomes, preserve received state
-                  var stored = JSON.parse(existing);
-                  var changed = false;
-                  for (var i = 0; i < DEFAULT_INCOMES.length; i++) {
-                    var found = false;
-                    for (var j = 0; j < stored.length; j++) {
-                      if (stored[j].id === DEFAULT_INCOMES[i].id) {
-                        found = true;
-                        break;
-                      }
-                    }
-                    if (!found) {
-                      stored.push(DEFAULT_INCOMES[i]);
-                      changed = true;
-                    }
-                  }
-                  if (changed) {
-                    localStorage.setItem(KEY, JSON.stringify(stored));
-                  }
+                if (!localStorage.getItem(KEY)) {
+                  localStorage.setItem(KEY, JSON.stringify(DEFAULTS));
                 }
               } catch(e) {}
             })();
           `
         }} />
-
-        {/* Cache bust */}
+        {/* Cache bust on version change */}
         <script dangerouslySetInnerHTML={{
           __html: `
             (function() {
-              var CURR = '${APP_CACHE_VERSION}';
-              var prev = localStorage.getItem('mf_cache_ver');
-              var hasBust = location.search.indexOf('_cb=') !== -1;
-              if (hasBust) {
-                history.replaceState(null, '', location.pathname);
-              }
-              if (prev !== CURR || hasBust) {
-                localStorage.setItem('mf_cache_ver', CURR);
-                if (!hasBust) {
-                  if ('caches' in window) {
-                    caches.keys().then(function(names) {
-                      names.forEach(function(n) { caches.delete(n); });
-                    });
-                  }
-                  if ('serviceWorker' in navigator) {
-                    navigator.serviceWorker.getRegistrations().then(function(regs) {
-                      regs.forEach(function(r) { r.unregister(); });
-                    });
-                  }
-                  location.replace(location.pathname + '?_cb=' + Date.now() + location.hash);
+              try {
+                var prev = localStorage.getItem('mf_cache_version');
+                if (prev !== '${APP_CACHE_VERSION}') {
+                  localStorage.setItem('mf_cache_version', '${APP_CACHE_VERSION}');
+                  var pathname = window.location.pathname.replace(/\?_cb=.*$/, '');
+                  window.location.replace(pathname + '?_cb=' + Date.now());
                 }
-              }
-            })();
-          `
-        }} />
-
-        {/* Service worker */}
-        <script dangerouslySetInnerHTML={{
-          __html: `
-            (function() {
-              if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('/misfinanzas/sw.js', { scope: '/misfinanzas/' }).catch(function() {});
-              }
+              } catch(e) {}
             })();
           `
         }} />

@@ -1,4 +1,4 @@
-import { Account, Category, Transaction, Goal, GoalItem, ProjectedIncome, Settings, Stats } from './types';
+import { Category, Transaction, Goal, GoalItem, Settings, Stats, ProjectedIncome } from './types';
 
 // ─── localStorage helpers ────────────────────────────────────
 const KEYS = {
@@ -6,7 +6,6 @@ const KEYS = {
   categories: 'mf_categories',
   transactions: 'mf_transactions',
   goals: 'mf_goals',
-  accounts: 'mf_accounts',
   seeded: 'mf_seeded',
 };
 
@@ -65,36 +64,6 @@ const DEFAULT_QUINCE_ITEMS: GoalItem[] = [
   { id: 'qi-10', goalId: 'quinceanera-2026', name: 'Otros / Imprevistos', estimatedCost: 550, actualCost: 0, isPaid: false, notes: null },
 ];
 
-const DEFAULT_QUINCE_PROJECTED: ProjectedIncome[] = [
-  { id: 'pi-1', date: '2026-06-05', amount: 41760, description: 'Sueldo', received: false },
-  { id: 'pi-2', date: '2026-06-20', amount: 21000, description: '1/2 Aguinaldo', received: false },
-  { id: 'pi-3', date: '2026-07-01', amount: 40000, description: 'Sueldo', received: false },
-  { id: 'pi-4', date: '2026-07-30', amount: 9000, description: 'Ingreso extra', received: false },
-  { id: 'pi-5', date: '2026-08-03', amount: 40000, description: 'Sueldo', received: false },
-];
-
-const STABLE_PROJECTED_KEY = 'mf_projected_incomes';
-const QUINCE_GOAL_ID = 'quinceanera-2026';
-
-const mergeProjectedIncomes = (...sources: ProjectedIncome[][]): ProjectedIncome[] => {
-  const merged = new Map<string, ProjectedIncome>();
-
-  for (const source of sources) {
-    for (const income of source) {
-      merged.set(income.id, { ...income, received: Boolean(income.received) });
-    }
-  }
-
-  return Array.from(merged.values()).sort((a, b) => a.date.localeCompare(b.date));
-};
-
-const getStableProjectedIncomes = (goalIncomes: ProjectedIncome[] = []): ProjectedIncome[] => {
-  const stable = load<ProjectedIncome[]>(STABLE_PROJECTED_KEY, []);
-  const incomes = mergeProjectedIncomes(DEFAULT_QUINCE_PROJECTED, goalIncomes, stable);
-  save(STABLE_PROJECTED_KEY, incomes);
-  return incomes;
-};
-
 const DEFAULT_GOALS: Goal[] = [
   {
     id: 'quinceanera-2026',
@@ -107,7 +76,7 @@ const DEFAULT_GOALS: Goal[] = [
     createdAt: now(),
     updatedAt: now(),
     items: DEFAULT_QUINCE_ITEMS,
-    projectedIncomes: DEFAULT_QUINCE_PROJECTED,
+    projectedIncomes: [],
   },
 ];
 
@@ -158,61 +127,10 @@ export const deleteCategory = (_id: string): { success: boolean } => {
   return { success: true };
 };
 
-// ─── Accounts ──────────────────────────────────────────────
-export const getAccounts = (): Account[] => {
-  return load<Account[]>(KEYS.accounts, []);
-};
-
-export const createAccount = (data: { name: string; icon: string; color: string; balance: number }): Account => {
-  const accounts = getAccounts();
-  const account: Account = {
-    id: uid(),
-    name: data.name,
-    icon: data.icon,
-    color: data.color,
-    balance: data.balance,
-    createdAt: now(),
-    updatedAt: now(),
-  };
-  accounts.push(account);
-  save(KEYS.accounts, accounts);
-  return account;
-};
-
-export const updateAccount = (id: string, data: { name?: string; icon?: string; color?: string; balance?: number }): Account | null => {
-  const accounts = getAccounts();
-  const idx = accounts.findIndex(a => a.id === id);
-  if (idx === -1) return null;
-  if (data.name !== undefined) accounts[idx].name = data.name;
-  if (data.icon !== undefined) accounts[idx].icon = data.icon;
-  if (data.color !== undefined) accounts[idx].color = data.color;
-  if (data.balance !== undefined) accounts[idx].balance = data.balance;
-  accounts[idx].updatedAt = now();
-  save(KEYS.accounts, accounts);
-  return accounts[idx];
-};
-
-export const deleteAccount = (id: string): { success: boolean } => {
-  const accounts = getAccounts().filter(a => a.id !== id);
-  save(KEYS.accounts, accounts);
-  return { success: true };
-};
-
-export const getAccountStats = (): { account: Account; income: number; expense: number; currentBalance: number }[] => {
-  const accounts = getAccounts();
-  const txs = load<Transaction[]>(KEYS.transactions, []);
-  return accounts.map(a => {
-    const income = txs.filter(t => t.accountId === a.id && t.type === 'income').reduce((s, t) => s + t.amount, 0);
-    const expense = txs.filter(t => t.accountId === a.id && t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-    return { account: a, income, expense, currentBalance: a.balance + income - expense };
-  });
-};
-
 // ─── Transactions ────────────────────────────────────────────
 export const getTransactions = (_month?: string): Transaction[] => {
   const all = load<Transaction[]>(KEYS.transactions, []);
   const cats = getCategories();
-  const accounts = getAccounts();
   return all
     .map(t => ({ ...t, category: cats.find(c => c.id === t.categoryId) ?? null }))
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -223,7 +141,6 @@ export const createTransaction = (data: {
   amount: number;
   description: string;
   categoryId?: string;
-  accountId?: string;
   date?: string;
 }): Transaction => {
   const txs = load<Transaction[]>(KEYS.transactions, []);
@@ -233,7 +150,6 @@ export const createTransaction = (data: {
     amount: data.amount,
     description: data.description,
     categoryId: data.categoryId ?? null,
-    accountId: data.accountId ?? null,
     date: data.date ?? now(),
     createdAt: now(),
     updatedAt: now(),
@@ -242,28 +158,6 @@ export const createTransaction = (data: {
   txs.push(tx);
   save(KEYS.transactions, txs);
   return tx;
-};
-
-export const updateTransaction = (id: string, data: {
-  type?: string;
-  amount?: number;
-  description?: string;
-  categoryId?: string | null;
-  accountId?: string | null;
-  date?: string;
-}): Transaction | null => {
-  const txs = load<Transaction[]>(KEYS.transactions, []);
-  const idx = txs.findIndex(t => t.id === id);
-  if (idx === -1) return null;
-  if (data.type !== undefined) txs[idx].type = data.type as 'income' | 'expense';
-  if (data.amount !== undefined) txs[idx].amount = data.amount;
-  if (data.description !== undefined) txs[idx].description = data.description;
-  if (data.categoryId !== undefined) txs[idx].categoryId = data.categoryId;
-  if (data.accountId !== undefined) txs[idx].accountId = data.accountId;
-  if (data.date !== undefined) txs[idx].date = data.date;
-  txs[idx].updatedAt = now();
-  save(KEYS.transactions, txs);
-  return txs[idx];
 };
 
 export const deleteTransaction = (id: string): { success: boolean } => {
@@ -275,24 +169,18 @@ export const deleteTransaction = (id: string): { success: boolean } => {
 // ─── Goals ───────────────────────────────────────────────────
 export const getGoals = (): Goal[] => {
   const goals = load<Goal[]>(KEYS.goals, []);
-  // Migration: keep Quinceañera projected incomes in the goal and in the stable key.
+  // Migration: add projectedIncomes if missing on Quinceañera goal
   let migrated = false;
-  const updated = goals.map(g => {
-    if (g.id === QUINCE_GOAL_ID) {
-      const projectedIncomes = getStableProjectedIncomes(g.projectedIncomes ?? []);
-      if (JSON.stringify(g.projectedIncomes ?? []) !== JSON.stringify(projectedIncomes)) {
-        migrated = true;
-      }
-      return { ...g, projectedIncomes };
-    }
+  for (const g of goals) {
     if (!g.projectedIncomes) {
+      g.projectedIncomes = [];
       migrated = true;
-      return { ...g, projectedIncomes: [] };
     }
-    return g;
-  });
-  if (migrated) save(KEYS.goals, updated);
-  return updated;
+  }
+  if (migrated) {
+    save(KEYS.goals, goals);
+  }
+  return goals;
 };
 
 export const createGoal = (data: {
@@ -314,7 +202,6 @@ export const createGoal = (data: {
     createdAt: now(),
     updatedAt: now(),
     items: [],
-    projectedIncomes: [],
   };
   goals.push(goal);
   save(KEYS.goals, goals);
@@ -422,18 +309,55 @@ export const deleteGoalItem = (goalId: string, itemId: string): { success: boole
   return { success: true };
 };
 
-export const toggleProjectedIncome = (goalId: string, incomeId: string): { success: boolean } => {
-  const goals = getGoals();
-  const idx = goals.findIndex(g => g.id === goalId);
+// ─── Stable Projected Incomes (NOT synced to Gist) ──────────
+const STABLE_INCOMES_KEY = 'mf_projected_incomes';
+
+export const getStableProjectedIncomes = (): ProjectedIncome[] => {
+  try {
+    const raw = localStorage.getItem(STABLE_INCOMES_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  // Default Quinceañera incomes
+  const defaults = [
+    { id: 'pi-1', date: '2026-06-05', amount: 41760, description: 'Sueldo', received: false },
+    { id: 'pi-2', date: '2026-06-20', amount: 21000, description: '1/2 Aguinaldo', received: false },
+    { id: 'pi-3', date: '2026-07-01', amount: 40000, description: 'Sueldo', received: false },
+    { id: 'pi-4', date: '2026-07-30', amount: 9000, description: 'Ingreso extra', received: false },
+    { id: 'pi-5', date: '2026-08-03', amount: 40000, description: 'Sueldo', received: false },
+  ];
+  localStorage.setItem(STABLE_INCOMES_KEY, JSON.stringify(defaults));
+  return defaults;
+};
+
+export const addStableProjectedIncome = (data: { description: string; amount: number; date: string }): ProjectedIncome => {
+  const incomes = getStableProjectedIncomes();
+  const income: ProjectedIncome = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 9),
+    date: data.date,
+    amount: data.amount,
+    description: data.description,
+    received: false,
+  };
+  incomes.push(income);
+  localStorage.setItem(STABLE_INCOMES_KEY, JSON.stringify(incomes));
+  return income;
+};
+
+export const deleteStableProjectedIncome = (incomeId: string): { success: boolean } => {
+  const incomes = getStableProjectedIncomes().filter(pi => pi.id !== incomeId);
+  localStorage.setItem(STABLE_INCOMES_KEY, JSON.stringify(incomes));
+  return { success: true };
+};
+
+export const toggleStableProjectedIncome = (incomeId: string): { success: boolean } => {
+  const incomes = getStableProjectedIncomes();
+  const idx = incomes.findIndex(pi => pi.id === incomeId);
   if (idx === -1) return { success: true };
-  const incomeIdx = goals[idx].projectedIncomes.findIndex(pi => pi.id === incomeId);
-  if (incomeIdx === -1) return { success: true };
-  goals[idx].projectedIncomes[incomeIdx].received = !goals[idx].projectedIncomes[incomeIdx].received;
-  goals[idx].updatedAt = now();
-  if (goalId === QUINCE_GOAL_ID) {
-    save(STABLE_PROJECTED_KEY, goals[idx].projectedIncomes);
-  }
-  save(KEYS.goals, goals);
+  incomes[idx].received = !incomes[idx].received;
+  localStorage.setItem(STABLE_INCOMES_KEY, JSON.stringify(incomes));
   return { success: true };
 };
 

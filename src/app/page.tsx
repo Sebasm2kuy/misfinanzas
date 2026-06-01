@@ -1211,6 +1211,25 @@ export default function Home() {
                 />
               </motion.div>
             )}
+            {activeTab === 'plan' && (
+              <motion.div key="plan" {...FADE_IN}>
+                <PlanTab
+                  goals={goals}
+                  onAddSavings={(g) => {
+                    setShowAddSavings(g);
+                    setSavingsAmount('');
+                  }}
+                  onToggleItem={handleToggleItemPaid}
+                  onEditItemCost={(goalId, itemId, cost) => setEditingItemCost({ goalId, itemId, cost: String(cost) })}
+                  onDeleteItem={(goalId, itemId) => setDeleteConfirm({ type: 'goalItem', id: itemId, name: goalId + ':' + itemId })}
+                  onAddItem={(goalId) => {
+                    setShowAddItem(goalId);
+                    setNewItem({ name: '', estimatedCost: '' });
+                  }}
+                  onReload={loadAndSync}
+                />
+              </motion.div>
+            )}
             {activeTab === 'goals' && (
               <motion.div key="goals" {...FADE_IN}>
                 <GoalsTab
@@ -3957,6 +3976,155 @@ function GoalsTab({
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+// ─── PLAN DE AHORRO TAB ────────────────────────────────────────
+function PlanTab({ goals, onAddSavings, onToggleItem, onEditItemCost, onDeleteItem, onAddItem, onReload }: {
+  goals: Goal[];
+  onAddSavings: (g: Goal) => void;
+  onToggleItem: (goalId: string, item: GoalItem) => void;
+  onEditItemCost: (goalId: string, itemId: string, cost: number) => void;
+  onDeleteItem: (goalId: string, itemId: string) => void;
+  onAddItem: (goalId: string) => void;
+  onReload: () => void;
+}) {
+  const [pis, setPis] = useState<Array<{id:string;date:string;amount:number;description:string;received:boolean}>>([]);
+  const [showAdd, setShowAdd] = useState(false);
+  const [ni, setNi] = useState({ description: '', amount: '', date: '' });
+  const [calOpen, setCalOpen] = useState(false);
+
+  const load = useCallback(() => setPis(api.getStableProjectedIncomes()), []);
+  useEffect(() => { load(); }, [load]);
+
+  const gwp = goals.filter(g => g.deadline && g.savedAmount < g.targetAmount);
+  if (!gwp.length) return (
+    <Card><CardContent className="py-12 text-center"><PiggyBank className="h-12 w-12 text-muted-foreground mx-auto mb-3" /><p className="text-muted-foreground text-sm">No hay metas activas con plan de ahorro</p></CardContent></Card>
+  );
+
+  return (
+    <div className="space-y-4 sm:space-y-6">
+      <div className="hidden lg:flex items-center justify-between"><div><h2 className="text-2xl font-bold tracking-tight">Plan de Ahorro</h2><p className="text-muted-foreground text-sm">Proyección de ingresos y costos</p></div></div>
+      {gwp.map((goal, idx) => {
+        const isQ = goal.id === 'quinceanera-2026';
+        const rem = goal.targetAmount - goal.savedAmount;
+        const dl = new Date(goal.deadline!);
+        const ml = dl.getTime() > Date.now() ? Math.max(1, Math.ceil((dl.getTime()-Date.now())/(1000*60*60*24*30.44))) : 0;
+        const mn = ml > 0 ? rem/ml : 0;
+        const pct = formatPercent(goal.savedAmount, goal.targetAmount);
+        const totP = pis.reduce((s,p)=>s+p.amount,0);
+        const recP = pis.filter(p=>p.received).reduce((s,p)=>s+p.amount,0);
+        const penP = totP - recP;
+        const teorico = goal.savedAmount + penP;
+        const costo = goal.items.reduce((s,i)=>s+i.estimatedCost,0);
+        const diff = teorico - costo;
+
+        const togRec = async (id:string) => { api.toggleStableProjectedIncome(id); load(); await onReload(); };
+        const delInc = async (id:string) => { api.deleteStableProjectedIncome(id); load(); await onReload(); };
+        const addInc = async () => {
+          if (!ni.description||!ni.amount||!ni.date) { toast.error('Completa todos los campos'); return; }
+          api.addStableProjectedIncome({ description: ni.description, amount: parseFloat(ni.amount), date: new Date(ni.date).toISOString() });
+          setNi({description:'',amount:'',date:''}); setShowAdd(false); load(); await onReload(); toast.success('Ingreso agregado al plan');
+        };
+
+        return (
+          <motion.div key={goal.id} initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{delay:idx*0.1}} className="space-y-3">
+            <Card className={`overflow-hidden ${isQ?'border-pink-300 ring-1 ring-pink-200':''}`}>
+              {isQ && (<div className="bg-gradient-to-r from-pink-500 to-fuchsia-500 p-3 sm:p-4 text-white"><div className="flex items-center gap-2"><PartyPopper className="h-5 w-5"/><Crown className="h-4 w-4"/><span className="text-sm font-semibold">Plan de Ahorro - Quinceañera</span></div></div>)}
+              <CardContent className="p-3 sm:p-5 space-y-4">
+                <div>
+                  <div className="flex justify-between text-xs sm:text-sm mb-1.5"><span className="text-muted-foreground truncate mr-2">{formatCurrency(goal.savedAmount)} de {formatCurrency(goal.targetAmount)}</span><span className="font-semibold shrink-0" style={{color:goal.color}}>{pct}%</span></div>
+                  <div className="h-3 bg-muted rounded-full overflow-hidden"><motion.div className="h-full rounded-full" style={{backgroundColor:goal.color}} initial={{width:0}} animate={{width:`${Math.min(pct,100)}%`}} transition={{duration:1}} /></div>
+                </div>
+                <div className={`rounded-xl p-3 space-y-2.5 ${isQ?'bg-pink-50 dark:bg-pink-950/30 border border-pink-200 dark:border-pink-800':'bg-muted/50 border border-border'}`}>
+                  <div className="flex items-center gap-2"><Calculator className={`h-4 w-4 ${isQ?'text-pink-600':'text-primary'}`} /><span className="text-xs font-semibold">Resumen Mensual</span></div>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="space-y-0.5"><p className="text-[10px] sm:text-xs text-muted-foreground">Falta ahorrar</p><p className="text-xs sm:text-sm font-bold">{formatCurrency(rem)}</p></div>
+                    <div className="space-y-0.5"><p className="text-[10px] sm:text-xs text-muted-foreground">Meses</p><div className="flex items-center justify-center gap-1"><Clock className="h-3 w-3 text-muted-foreground"/><p className="text-xs sm:text-sm font-bold">{ml}</p></div></div>
+                    <div className="space-y-0.5"><p className="text-[10px] sm:text-xs text-muted-foreground">Promedio/mes</p><p className="text-xs sm:text-sm font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(mn)}</p></div>
+                  </div>
+                </div>
+                <Button size="sm" variant="outline" className="w-full h-9 text-xs gap-1" style={{borderColor:goal.color,color:goal.color}} onClick={()=>setShowAdd(true)}><Plus className="h-3 w-3" /> Agregar ingreso futuro</Button>
+                <Button size="sm" variant="outline" className="w-full h-9 text-xs gap-1" style={{borderColor:goal.color,color:goal.color}} onClick={()=>onAddSavings(goal)}><PiggyBank className="h-3 w-3" /> Agregar ahorro manual</Button>
+              </CardContent>
+            </Card>
+            <Card className={`overflow-hidden ${isQ?'border-fuchsia-200':''}`}>
+              <CardContent className="p-3 sm:p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2"><TrendingUp className={`h-4 w-4 ${diff>=0?'text-emerald-600':'text-amber-600'}`} /><span className="text-xs sm:text-sm font-semibold">Proyección de Ingresos</span></div>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${diff>=0?'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300':'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'}`}>{diff>=0?'✓ Llegás a la meta':'✗ Faltan fondos'}</span>
+                </div>
+                <div className="space-y-1.5">
+                  {pis.map(pi => {
+                    const past = new Date(pi.date) <= new Date();
+                    return (
+                      <div key={pi.id} className={`flex items-center gap-2 text-xs sm:text-sm rounded-lg px-2.5 sm:px-3 py-2 transition-colors ${pi.received?'bg-emerald-50 dark:bg-emerald-950/30 text-muted-foreground':past?'bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800':'bg-background'}`}>
+                        <Checkbox checked={pi.received} onCheckedChange={()=>togRec(pi.id)} className={pi.received?'border-emerald-500':''} />
+                        <span className={`flex-1 min-w-0 truncate ${pi.received?'line-through':'font-medium'}`}>{pi.description}</span>
+                        <span className="text-muted-foreground shrink-0">{formatDateShort(pi.date)}</span>
+                        <span className={`font-bold shrink-0 ${pi.received?'text-muted-foreground':'text-emerald-600 dark:text-emerald-400'}`}>{formatCurrency(pi.amount)}</span>
+                        <button onClick={()=>delInc(pi.id)} className="text-muted-foreground hover:text-destructive shrink-0 p-0.5"><Trash2 className="h-3 w-3" /></button>
+                      </div>
+                    );
+                  })}
+                </div>
+                <Separator />
+                <div className="space-y-2 text-xs sm:text-sm">
+                  <div className="flex justify-between"><span className="text-muted-foreground">Pendiente por cobrar</span><span className="font-semibold">{formatCurrency(penP)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Dinero real ahorrado</span><span className="font-semibold">{formatCurrency(goal.savedAmount)}</span></div>
+                  <div className="flex justify-between font-bold"><span>Total teórico (real + pendiente)</span><span className={diff>=0?'text-emerald-600':'text-amber-600'}>{formatCurrency(teorico)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Costo total de la fiesta</span><span className="font-semibold">{formatCurrency(costo)}</span></div>
+                  <div className={`flex justify-between rounded-lg px-3 py-2.5 mt-1 ${diff>=0?'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300':'bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300'}`}>
+                    <span className="font-semibold">Diferencia</span>
+                    <span className="font-bold text-sm">{diff>=0?'+':''}{formatCurrency(diff)}</span>
+                  </div>
+                  {diff < 0 && (<p className="text-[10px] text-muted-foreground text-center">Faltan {formatCurrency(Math.abs(diff))} para cubrir todos los gastos de la fiesta</p>)}
+                </div>
+              </CardContent>
+            </Card>
+            {goal.items.length > 0 && (
+              <Card>
+                <CardContent className="p-3 sm:p-5 space-y-3">
+                  <div className="flex items-center justify-between"><div className="flex items-center gap-2"><Target className="h-4 w-4 text-muted-foreground" /><span className="text-xs sm:text-sm font-semibold">Items de la meta</span></div><span className="text-xs text-muted-foreground">Total: {formatCurrency(costo)}</span></div>
+                  <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                    {goal.items.map(item => (
+                      <div key={item.id} className={`flex items-center gap-2 p-2 rounded-lg border text-xs sm:text-sm transition-colors ${item.isPaid?'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800':'bg-background border-border'}`}>
+                        <Checkbox checked={item.isPaid} onCheckedChange={()=>onToggleItem(goal.id,item)} className={item.isPaid?'border-emerald-500':''} />
+                        <div className="flex-1 min-w-0"><p className={`text-xs sm:text-sm ${item.isPaid?'line-through text-muted-foreground':'font-medium'}`}>{item.name}</p></div>
+                        <span className="text-muted-foreground text-xs">{formatCurrency(item.estimatedCost)}</span>
+                        {!item.isPaid && (<Button variant="ghost" size="icon" className="h-6 w-6" onClick={()=>onEditItemCost(goal.id,item.id,item.estimatedCost)}><span className="text-xs font-medium" style={{color:goal.color}}>$</span></Button>)}
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={()=>onDeleteItem(goal.id,item.id)}><Trash2 className="h-3 w-3" /></Button>
+                      </div>
+                    ))}
+                  </div>
+                  <Button variant="outline" size="sm" className="w-full h-8 text-xs gap-1" style={{borderColor:goal.color,color:goal.color}} onClick={()=>onAddItem(goal.id)}><Plus className="h-3 w-3" /> Agregar item</Button>
+                </CardContent>
+              </Card>
+            )}
+          </motion.div>
+        );
+      })}
+      <Dialog open={showAdd} onOpenChange={setShowAdd}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>Agregar Ingreso Futuro</DialogTitle><DialogDescription>Agrega un ingreso proyectado al plan</DialogDescription></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2"><Label>Descripción</Label><Input placeholder="Ej: Sueldo, Freelance..." value={ni.description} onChange={e=>setNi(p=>({...p,description:e.target.value}))} /></div>
+            <div className="space-y-2"><Label>Monto ($)</Label><Input type="number" placeholder="0.00" value={ni.amount} onChange={e=>setNi(p=>({...p,amount:e.target.value}))} /></div>
+            <div className="space-y-2">
+              <Label>Fecha</Label>
+              <Popover open={calOpen} onOpenChange={setCalOpen}>
+                <PopoverTrigger asChild><Button variant="outline" className="w-full justify-start text-left font-normal h-10">{ni.date?formatDate(ni.date):'Seleccionar fecha'}</Button></PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start"><CalendarComponent mode="single" selected={ni.date?new Date(ni.date):undefined} onSelect={(d:Date|undefined)=>{if(d)setNi(p=>({...p,date:d.toISOString().split('T')[0]}));setCalOpen(false);}} /></PopoverContent>
+              </Popover>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={()=>setShowAdd(false)}>Cancelar</Button>
+            <Button onClick={addInc} disabled={!ni.description||!ni.amount||!ni.date}><Plus className="h-4 w-4 mr-1" /> Agregar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
