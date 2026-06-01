@@ -197,7 +197,7 @@ export async function saveToGist(token: string, gistId: string, data: Record<str
 }
 
 // ─── LocalStorage Data Gather ──────────────────────────────────
-const STORAGE_KEYS = ['mf_settings', 'mf_categories', 'mf_transactions', 'mf_goals', 'mf_seeded'];
+const STORAGE_KEYS = ['mf_settings', 'mf_categories', 'mf_transactions', 'mf_goals', 'mf_accounts', 'mf_seeded'];
 
 export function gatherLocalData(): Record<string, any> {
   const data: Record<string, any> = {};

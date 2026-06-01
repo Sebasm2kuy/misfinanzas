@@ -1,4 +1,4 @@
-import { Category, Transaction, Goal, GoalItem, Settings, Stats } from './types';
+import { Account, Category, Transaction, Goal, GoalItem, Settings, Stats } from './types';
 
 // ─── localStorage helpers ────────────────────────────────────
 const KEYS = {
@@ -6,6 +6,7 @@ const KEYS = {
   categories: 'mf_categories',
   transactions: 'mf_transactions',
   goals: 'mf_goals',
+  accounts: 'mf_accounts',
   seeded: 'mf_seeded',
 };
 
@@ -126,10 +127,61 @@ export const deleteCategory = (_id: string): { success: boolean } => {
   return { success: true };
 };
 
+// ─── Accounts ──────────────────────────────────────────────
+export const getAccounts = (): Account[] => {
+  return load<Account[]>(KEYS.accounts, []);
+};
+
+export const createAccount = (data: { name: string; icon: string; color: string; balance: number }): Account => {
+  const accounts = getAccounts();
+  const account: Account = {
+    id: uid(),
+    name: data.name,
+    icon: data.icon,
+    color: data.color,
+    balance: data.balance,
+    createdAt: now(),
+    updatedAt: now(),
+  };
+  accounts.push(account);
+  save(KEYS.accounts, accounts);
+  return account;
+};
+
+export const updateAccount = (id: string, data: { name?: string; icon?: string; color?: string; balance?: number }): Account | null => {
+  const accounts = getAccounts();
+  const idx = accounts.findIndex(a => a.id === id);
+  if (idx === -1) return null;
+  if (data.name !== undefined) accounts[idx].name = data.name;
+  if (data.icon !== undefined) accounts[idx].icon = data.icon;
+  if (data.color !== undefined) accounts[idx].color = data.color;
+  if (data.balance !== undefined) accounts[idx].balance = data.balance;
+  accounts[idx].updatedAt = now();
+  save(KEYS.accounts, accounts);
+  return accounts[idx];
+};
+
+export const deleteAccount = (id: string): { success: boolean } => {
+  const accounts = getAccounts().filter(a => a.id !== id);
+  save(KEYS.accounts, accounts);
+  return { success: true };
+};
+
+export const getAccountStats = (): { account: Account; income: number; expense: number; currentBalance: number }[] => {
+  const accounts = getAccounts();
+  const txs = load<Transaction[]>(KEYS.transactions, []);
+  return accounts.map(a => {
+    const income = txs.filter(t => t.accountId === a.id && t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const expense = txs.filter(t => t.accountId === a.id && t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    return { account: a, income, expense, currentBalance: a.balance + income - expense };
+  });
+};
+
 // ─── Transactions ────────────────────────────────────────────
 export const getTransactions = (_month?: string): Transaction[] => {
   const all = load<Transaction[]>(KEYS.transactions, []);
   const cats = getCategories();
+  const accounts = getAccounts();
   return all
     .map(t => ({ ...t, category: cats.find(c => c.id === t.categoryId) ?? null }))
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -140,6 +192,7 @@ export const createTransaction = (data: {
   amount: number;
   description: string;
   categoryId?: string;
+  accountId?: string;
   date?: string;
 }): Transaction => {
   const txs = load<Transaction[]>(KEYS.transactions, []);
@@ -149,6 +202,7 @@ export const createTransaction = (data: {
     amount: data.amount,
     description: data.description,
     categoryId: data.categoryId ?? null,
+    accountId: data.accountId ?? null,
     date: data.date ?? now(),
     createdAt: now(),
     updatedAt: now(),
@@ -164,6 +218,7 @@ export const updateTransaction = (id: string, data: {
   amount?: number;
   description?: string;
   categoryId?: string | null;
+  accountId?: string | null;
   date?: string;
 }): Transaction | null => {
   const txs = load<Transaction[]>(KEYS.transactions, []);
@@ -173,6 +228,7 @@ export const updateTransaction = (id: string, data: {
   if (data.amount !== undefined) txs[idx].amount = data.amount;
   if (data.description !== undefined) txs[idx].description = data.description;
   if (data.categoryId !== undefined) txs[idx].categoryId = data.categoryId;
+  if (data.accountId !== undefined) txs[idx].accountId = data.accountId;
   if (data.date !== undefined) txs[idx].date = data.date;
   txs[idx].updatedAt = now();
   save(KEYS.transactions, txs);

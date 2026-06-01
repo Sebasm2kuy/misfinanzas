@@ -101,7 +101,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DynamicIcon } from '@/components/dynamic-icon';
 
-import { Settings, Transaction, Category, Goal, GoalItem, Stats } from '@/lib/types';
+import { Settings, Transaction, Category, Goal, GoalItem, Stats, Account } from '@/lib/types';
 import * as api from '@/lib/api';
 import * as sync from '@/lib/sync';
 import { formatCurrency, formatDate, formatDateShort, formatPercent, getMonthYear } from '@/lib/format';
@@ -141,8 +141,14 @@ export default function Home() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Account dialog
+  const [showAddAccount, setShowAddAccount] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  const [newAccount, setNewAccount] = useState({ name: '', icon: 'Wallet', color: '#3b82f6', balance: '' });
 
   // Transaction filters
   const [txFilterType, setTxFilterType] = useState<'all' | 'income' | 'expense'>('all');
@@ -180,15 +186,15 @@ export default function Home() {
   const [syncSetupLoading, setSyncSetupLoading] = useState(false);
 
   // Form states
-  const [newTx, setNewTx] = useState({ type: 'expense' as 'income' | 'expense', amount: '', description: '', categoryId: '', date: new Date() });
+  const [newTx, setNewTx] = useState({ type: 'expense' as 'income' | 'expense', amount: '', description: '', categoryId: '', accountId: '', date: new Date() });
 
   // Quick add helpers
   const openAddExpense = () => {
-    setNewTx({ type: 'expense', amount: '', description: '', categoryId: '', date: new Date() });
+    setNewTx({ type: 'expense', amount: '', description: '', categoryId: '', accountId: accounts.length > 0 ? accounts[0].id : '', date: new Date() });
     setShowAddTx(true);
   };
   const openAddIncome = () => {
-    setNewTx({ type: 'income', amount: '', description: '', categoryId: '', date: new Date() });
+    setNewTx({ type: 'income', amount: '', description: '', categoryId: '', accountId: accounts.length > 0 ? accounts[0].id : '', date: new Date() });
     setShowAddTx(true);
   };
   const [newGoal, setNewGoal] = useState({ name: '', description: '', targetAmount: '', deadline: undefined as Date | undefined, color: '#6366f1' });
@@ -220,6 +226,7 @@ export default function Home() {
       setTransactions(t);
       setCategories(c);
       setGoals(g);
+      setAccounts(api.getAccounts());
       setStats(st);
     } catch {
       toast.error('Error al cargar los datos');
@@ -364,11 +371,12 @@ export default function Home() {
         amount: parseFloat(newTx.amount),
         description: newTx.description,
         categoryId: newTx.categoryId || undefined,
+        accountId: newTx.accountId || undefined,
         date: newTx.date.toISOString(),
       });
       toast.success('Transacción creada');
       setShowAddTx(false);
-      setNewTx({ type: 'expense', amount: '', description: '', categoryId: '', date: new Date() });
+      setNewTx({ type: 'expense', amount: '', description: '', categoryId: '', accountId: accounts.length > 0 ? accounts[0].id : '', date: new Date() });
       await loadAndSync();
     } catch {
       toast.error('Error al crear transacción');
@@ -394,6 +402,7 @@ export default function Home() {
         amount: editingTx.amount,
         description: editingTx.description,
         categoryId: editingTx.categoryId,
+        accountId: editingTx.accountId,
         date: editingTx.date,
       });
       toast.success('Transacción actualizada');
@@ -401,6 +410,57 @@ export default function Home() {
       await loadAndSync();
     } catch {
       toast.error('Error al actualizar');
+    }
+  };
+
+  // ── Account CRUD ──
+  const handleCreateAccount = async () => {
+    if (!newAccount.name || newAccount.balance === '') {
+      toast.error('Completa nombre y saldo inicial');
+      return;
+    }
+    try {
+      await api.createAccount({
+        name: newAccount.name,
+        icon: newAccount.icon,
+        color: newAccount.color,
+        balance: parseFloat(newAccount.balance) || 0,
+      });
+      toast.success('Cuenta creada');
+      setShowAddAccount(false);
+      setNewAccount({ name: '', icon: 'Wallet', color: '#3b82f6', balance: '' });
+      setAccounts(api.getAccounts());
+    } catch {
+      toast.error('Error al crear cuenta');
+    }
+  };
+
+  const handleUpdateAccount = async () => {
+    if (!editingAccount || !newAccount.name || newAccount.balance === '') return;
+    try {
+      await api.updateAccount(editingAccount.id, {
+        name: newAccount.name,
+        icon: newAccount.icon,
+        color: newAccount.color,
+        balance: parseFloat(newAccount.balance) || 0,
+      });
+      toast.success('Cuenta actualizada');
+      setEditingAccount(null);
+      setNewAccount({ name: '', icon: 'Wallet', color: '#3b82f6', balance: '' });
+      setAccounts(api.getAccounts());
+    } catch {
+      toast.error('Error al actualizar cuenta');
+    }
+  };
+
+  const handleDeleteAccount = async (id: string) => {
+    try {
+      await api.deleteAccount(id);
+      toast.success('Cuenta eliminada');
+      setDeleteConfirm(null);
+      setAccounts(api.getAccounts());
+    } catch {
+      toast.error('Error al eliminar cuenta');
     }
   };
 
@@ -637,7 +697,7 @@ export default function Home() {
   // ── Settings ──
   const handleResetAllData = async () => {
     // Clear ALL localStorage data including password
-    const allKeys = ['mf_settings', 'mf_categories', 'mf_transactions', 'mf_goals', 'mf_seeded', 'mf_auth_token', 'mf_gist_id', 'mf_github_user', 'mf_last_sync', 'mf_pass_hash', 'mf_pass_salt', 'mf_session'];
+    const allKeys = ['mf_settings', 'mf_categories', 'mf_transactions', 'mf_goals', 'mf_accounts', 'mf_seeded', 'mf_auth_token', 'mf_gist_id', 'mf_github_user', 'mf_last_sync', 'mf_pass_hash', 'mf_pass_salt', 'mf_session'];
     for (const key of allKeys) {
       localStorage.removeItem(key);
     }
@@ -1179,6 +1239,29 @@ export default function Home() {
                 </SelectContent>
               </Select>
             </div>
+            {accounts.length > 0 && (
+              <div className="space-y-2">
+                <Label>Cuenta</Label>
+                <Select
+                  value={newTx.accountId}
+                  onValueChange={(v) => setNewTx({ ...newTx, accountId: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar cuenta" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accounts.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        <div className="flex items-center gap-2">
+                          <div className="h-3 w-3 rounded-full" style={{ backgroundColor: a.color }} />
+                          {a.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Fecha</Label>
               <Popover>
@@ -1458,6 +1541,29 @@ export default function Home() {
                   </SelectContent>
                 </Select>
               </div>
+              {accounts.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Cuenta</Label>
+                  <Select
+                    value={editingTx.accountId || ''}
+                    onValueChange={(v) => setEditingTx({ ...editingTx, accountId: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sin cuenta" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accounts.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          <div className="flex items-center gap-2">
+                            <div className="h-3 w-3 rounded-full" style={{ backgroundColor: a.color }} />
+                            {a.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label>Fecha</Label>
                 <Popover>
@@ -1482,6 +1588,57 @@ export default function Home() {
             <Button variant="outline" onClick={() => setEditingTx(null)}>Cancelar</Button>
             <Button onClick={handleSaveEditTx} className={editingTx?.type === 'income' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}>
               Guardar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add/Edit Account */}
+      <Dialog open={showAddAccount || !!editingAccount} onOpenChange={() => { setShowAddAccount(false); setEditingAccount(null); setNewAccount({ name: '', icon: 'Wallet', color: '#3b82f6', balance: '' }); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{editingAccount ? 'Editar Cuenta' : 'Nueva Cuenta'}</DialogTitle>
+            <DialogDescription>{editingAccount ? 'Modifica los datos de la cuenta' : 'Agrega una cuenta bancaria o efectivo'}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nombre</Label>
+              <Input
+                placeholder="Ej: Santander"
+                value={newAccount.name}
+                onChange={(e) => setNewAccount({ ...newAccount, name: e.target.value })}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Saldo inicial</Label>
+              <Input
+                type="number"
+                step="0.01"
+                placeholder="0.00"
+                value={newAccount.balance}
+                onChange={(e) => setNewAccount({ ...newAccount, balance: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Color</Label>
+              <div className="flex gap-2 flex-wrap">
+                {['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#6b7280'].map(c => (
+                  <button
+                    key={c}
+                    type="button"
+                    className={`h-8 w-8 rounded-full border-2 transition-transform ${newAccount.color === c ? 'border-foreground scale-110' : 'border-transparent'}`}
+                    style={{ backgroundColor: c }}
+                    onClick={() => setNewAccount({ ...newAccount, color: c })}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowAddAccount(false); setEditingAccount(null); }}>Cancelar</Button>
+            <Button onClick={editingAccount ? handleUpdateAccount : handleCreateAccount}>
+              {editingAccount ? 'Guardar' : 'Crear'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1656,6 +1813,7 @@ export default function Home() {
               {deleteConfirm?.type === 'transaction' && `¿Eliminar la transacción "${deleteConfirm.name}"? Esta acción no se puede deshacer.`}
               {deleteConfirm?.type === 'goal' && `¿Eliminar la meta "${deleteConfirm.name}"? Se eliminarán todos sus items también.`}
               {deleteConfirm?.type === 'goalItem' && '¿Eliminar este item? Esta acción no se puede deshacer.'}
+              {deleteConfirm?.type === 'account' && `¿Eliminar la cuenta "${deleteConfirm.name}"? Las transacciones no se eliminarán.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1670,6 +1828,8 @@ export default function Home() {
                 } else if (deleteConfirm.type === 'goalItem') {
                   const [goalId, itemId] = deleteConfirm.name!.split(':');
                   handleDeleteItem(goalId, itemId);
+                } else if (deleteConfirm.type === 'account') {
+                  handleDeleteAccount(deleteConfirm.id);
                 }
               }}
               className="bg-destructive hover:bg-destructive/90"
@@ -1772,6 +1932,66 @@ export default function Home() {
                 </div>
               </div>
             )}
+
+            {/* Accounts section */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Wallet className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-medium text-sm">Cuentas</span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => { setNewAccount({ name: '', icon: 'Wallet', color: '#3b82f6', balance: '' }); setShowAddAccount(true); }}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Agregar
+                </Button>
+              </div>
+              {accounts.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No hay cuentas configuradas</p>
+              ) : (
+                <div className="space-y-2">
+                  {accounts.map(a => {
+                    const acctStats = api.getAccountStats().find(s => s.account.id === a.id);
+                    const currentBal = acctStats?.currentBalance ?? a.balance;
+                    return (
+                      <div key={a.id} className="flex items-center justify-between rounded-lg border p-3">
+                        <div className="flex items-center gap-3">
+                          <div className="h-3 w-3 rounded-full" style={{ backgroundColor: a.color }} />
+                          <div>
+                            <p className="text-sm font-medium">{a.name}</p>
+                            <p className={`text-xs ${currentBal >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                              Saldo: {formatCurrency(currentBal)}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => { setEditingAccount(a); setNewAccount({ name: a.name, icon: a.icon, color: a.color, balance: String(a.balance) }); }}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            onClick={() => setDeleteConfirm({ type: 'account', id: a.id, name: a.name })}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
             <Separator />
 
@@ -2201,6 +2421,38 @@ function DashboardTab({
           </Card>
         </motion.div>
       </div>
+
+      {/* Accounts summary */}
+      {api.getAccounts().length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <span className="text-lg">💳</span>
+                  Saldos por Cuenta
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {api.getAccountStats().map(({ account, income, expense, currentBalance }) => (
+                  <div key={account.id} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="h-3 w-3 rounded-full" style={{ backgroundColor: account.color }} />
+                      <span className="text-sm font-medium">{account.name}</span>
+                    </div>
+                    <span className={`text-sm font-bold ${currentBalance >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                      {formatCurrency(currentBalance)}
+                    </span>
+                  </div>
+                ))}
+                <Separator />
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Total en cuentas</span>
+                  <span className="font-bold text-foreground">
+                    {formatCurrency(api.getAccountStats().reduce((s, a) => s + a.currentBalance, 0))}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+      )}
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -2715,6 +2967,8 @@ function TransactionsTab({
   onEditTx: (tx: Transaction) => void;
   onImportExcel: () => void;
 }) {
+  const accountsList = api.getAccounts();
+
   // Generate month options
   const monthOptions: string[] = [];
   const now = new Date();
@@ -2827,6 +3081,12 @@ function TransactionsTab({
                                 {tx.category.name}
                               </Badge>
                             </>
+                          )}
+                          {tx.accountId && (
+                            <Badge variant="outline" className="text-xs px-1.5 py-0 gap-1">
+                              <Wallet className="h-2.5 w-2.5" />
+                              {accountsList.find(a => a.id === tx.accountId)?.name || 'Cuenta'}
+                            </Badge>
                           )}
                         </div>
                       </div>

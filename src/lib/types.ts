@@ -21,10 +21,21 @@ export interface Transaction {
   amount: number;
   description: string;
   categoryId: string | null;
+  accountId: string | null;
   date: string;
   createdAt: string;
   updatedAt: string;
   category: Category | null;
+}
+
+export interface Account {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  balance: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface GoalItem {
@@ -48,6 +59,13 @@ export interface Goal {
   createdAt: string;
   updatedAt: string;
   items: GoalItem[];
+}
+
+export interface AccountStats {
+  account: Account;
+  income: number;
+  expense: number;
+  currentBalance: number;
 }
 
 export interface Stats {
