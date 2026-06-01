@@ -159,6 +159,26 @@ export const createTransaction = (data: {
   return tx;
 };
 
+export const updateTransaction = (id: string, data: {
+  type?: string;
+  amount?: number;
+  description?: string;
+  categoryId?: string | null;
+  date?: string;
+}): Transaction | null => {
+  const txs = load<Transaction[]>(KEYS.transactions, []);
+  const idx = txs.findIndex(t => t.id === id);
+  if (idx === -1) return null;
+  if (data.type !== undefined) txs[idx].type = data.type as 'income' | 'expense';
+  if (data.amount !== undefined) txs[idx].amount = data.amount;
+  if (data.description !== undefined) txs[idx].description = data.description;
+  if (data.categoryId !== undefined) txs[idx].categoryId = data.categoryId;
+  if (data.date !== undefined) txs[idx].date = data.date;
+  txs[idx].updatedAt = now();
+  save(KEYS.transactions, txs);
+  return txs[idx];
+};
+
 export const deleteTransaction = (id: string): { success: boolean } => {
   const txs = load<Transaction[]>(KEYS.transactions, []).filter(t => t.id !== id);
   save(KEYS.transactions, txs);

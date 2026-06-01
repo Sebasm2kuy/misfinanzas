@@ -8,6 +8,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Plus,
+  Pencil,
   Trash2,
   Search,
   Filter,
@@ -203,6 +204,7 @@ export default function Home() {
   const [importing, setImporting] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [editingItemCost, setEditingItemCost] = useState<{ goalId: string; itemId: string; cost: string } | null>(null);
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
 
   // ── Data loading ──
   const loadAllData = useCallback(async () => {
@@ -381,6 +383,24 @@ export default function Home() {
       await loadAndSync();
     } catch {
       toast.error('Error al eliminar');
+    }
+  };
+
+  const handleSaveEditTx = async () => {
+    if (!editingTx) return;
+    try {
+      await api.updateTransaction(editingTx.id, {
+        type: editingTx.type,
+        amount: editingTx.amount,
+        description: editingTx.description,
+        categoryId: editingTx.categoryId,
+        date: editingTx.date,
+      });
+      toast.success('Transacción actualizada');
+      setEditingTx(null);
+      await loadAndSync();
+    } catch {
+      toast.error('Error al actualizar');
     }
   };
 
@@ -1054,6 +1074,7 @@ export default function Home() {
                   filteredTotalExpense={filteredTotalExpense}
                   onAddTx={() => setShowAddTx(true)}
                   onDeleteTx={(id, desc) => setDeleteConfirm({ type: 'transaction', id, name: desc })}
+                  onEditTx={(tx) => setEditingTx({ ...tx })}
                   onImportExcel={() => { setShowImportExcel(true); setImportError(''); setImportPreview([]); }}
                 />
               </motion.div>
@@ -1363,6 +1384,105 @@ export default function Home() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddItem(null)}>Cancelar</Button>
             <Button onClick={handleCreateItem}>Agregar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Transaction */}
+      <Dialog open={!!editingTx} onOpenChange={() => setEditingTx(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Transacción</DialogTitle>
+            <DialogDescription>Modifica los datos de la transacción</DialogDescription>
+          </DialogHeader>
+          {editingTx && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Tipo</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant={editingTx.type === 'expense' ? 'destructive' : 'outline'}
+                    className={editingTx.type === 'expense' ? '' : 'hover:text-rose-600'}
+                    onClick={() => setEditingTx({ ...editingTx, type: 'expense' })}
+                  >
+                    <ArrowDownRight className="h-4 w-4 mr-2" />
+                    Gasto
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={editingTx.type === 'income' ? 'default' : 'outline'}
+                    className={editingTx.type === 'income' ? 'bg-emerald-600 hover:bg-emerald-700' : 'hover:text-emerald-600'}
+                    onClick={() => setEditingTx({ ...editingTx, type: 'income' })}
+                  >
+                    <ArrowUpRight className="h-4 w-4 mr-2" />
+                    Ingreso
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Monto</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={editingTx.amount}
+                  onChange={(e) => setEditingTx({ ...editingTx, amount: parseFloat(e.target.value) || 0 })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Descripción</Label>
+                <Input
+                  value={editingTx.description}
+                  onChange={(e) => setEditingTx({ ...editingTx, description: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Categoría</Label>
+                <Select
+                  value={editingTx.categoryId || ''}
+                  onValueChange={(v) => setEditingTx({ ...editingTx, categoryId: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sin categoría" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(editingTx.type === 'income' ? incomeCategories : expenseCategories).map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        <div className="flex items-center gap-2">
+                          <div className="h-3 w-3 rounded-full" style={{ backgroundColor: c.color }} />
+                          {c.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Fecha</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full justify-start text-left font-normal">
+                      <Calendar className="mr-2 h-4 w-4" />
+                      {format(new Date(editingTx.date), "PPP", { locale: es })}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <CalendarComponent
+                      mode="single"
+                      selected={new Date(editingTx.date)}
+                      onSelect={(d) => d && setEditingTx({ ...editingTx, date: d.toISOString() })}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingTx(null)}>Cancelar</Button>
+            <Button onClick={handleSaveEditTx} className={editingTx?.type === 'income' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}>
+              Guardar
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -2591,6 +2711,7 @@ function TransactionsTab({
   filteredTotalExpense: number;
   onAddTx: () => void;
   onDeleteTx: (id: string, desc: string) => void;
+  onEditTx: (tx: Transaction) => void;
   onImportExcel: () => void;
 }) {
   // Generate month options
@@ -2717,6 +2838,14 @@ function TransactionsTab({
                       >
                         {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}
                       </span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-blue-600"
+                        onClick={() => onEditTx(tx)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
