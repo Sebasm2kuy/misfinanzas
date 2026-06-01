@@ -2697,6 +2697,7 @@ function TransactionsTab({
   filteredTotalExpense,
   onAddTx,
   onDeleteTx,
+  onEditTx,
   onImportExcel,
 }: {
   transactions: Transaction[];
