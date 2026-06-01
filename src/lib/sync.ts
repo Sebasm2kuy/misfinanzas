@@ -197,9 +197,122 @@ export async function saveToGist(token: string, gistId: string, data: Record<str
 }
 
 // ─── LocalStorage Data Gather ──────────────────────────────────
-const STORAGE_KEYS = ['mf_settings', 'mf_categories', 'mf_transactions', 'mf_goals', 'mf_accounts', 'mf_seeded'];
+const PROJECTED_INCOMES_KEY = 'mf_projected_incomes';
+const GOALS_KEY = 'mf_goals';
+const QUINCE_GOAL_ID = 'quinceanera-2026';
+const STORAGE_KEYS = [
+  'mf_settings',
+  'mf_categories',
+  'mf_transactions',
+  GOALS_KEY,
+  'mf_accounts',
+  'mf_seeded',
+  PROJECTED_INCOMES_KEY,
+];
+
+// ─── Migrations ──────────────────────────────────────────────
+const DEFAULT_QUINCE_PROJECTED = [
+  { id: 'pi-1', date: '2026-06-05', amount: 41760, description: 'Sueldo', received: false },
+  { id: 'pi-2', date: '2026-06-20', amount: 21000, description: '1/2 Aguinaldo', received: false },
+  { id: 'pi-3', date: '2026-07-01', amount: 40000, description: 'Sueldo', received: false },
+  { id: 'pi-4', date: '2026-07-30', amount: 9000, description: 'Ingreso extra', received: false },
+  { id: 'pi-5', date: '2026-08-03', amount: 40000, description: 'Sueldo', received: false },
+];
+
+type ProjectedIncomeLike = {
+  id: string;
+  date: string;
+  amount: number;
+  description: string;
+  received: boolean;
+};
+
+function readJson<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function isProjectedIncome(value: any): value is ProjectedIncomeLike {
+  return (
+    value &&
+    typeof value.id === 'string' &&
+    typeof value.date === 'string' &&
+    typeof value.amount === 'number' &&
+    typeof value.description === 'string'
+  );
+}
+
+function mergeProjectedIncomes(...sources: unknown[]): ProjectedIncomeLike[] {
+  const merged = new Map<string, ProjectedIncomeLike>();
+
+  for (const source of sources) {
+    if (!Array.isArray(source)) continue;
+    for (const income of source) {
+      if (!isProjectedIncome(income)) continue;
+      merged.set(income.id, {
+        id: income.id,
+        date: income.date,
+        amount: income.amount,
+        description: income.description,
+        received: Boolean(income.received),
+      });
+    }
+  }
+
+  return Array.from(merged.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function getQuinceProjectedFromGoals(goals: any): unknown[] {
+  if (!Array.isArray(goals)) return [];
+  return goals.find((goal: any) => goal?.id === QUINCE_GOAL_ID)?.projectedIncomes ?? [];
+}
+
+function persistProjectedIncomes(incomes: ProjectedIncomeLike[]): void {
+  localStorage.setItem(PROJECTED_INCOMES_KEY, JSON.stringify(incomes));
+
+  const goals = readJson<any[]>(GOALS_KEY, []);
+  if (!Array.isArray(goals)) return;
+
+  let changed = false;
+  const updatedGoals = goals.map((goal: any) => {
+    if (goal?.id !== QUINCE_GOAL_ID) return goal;
+    changed = true;
+    return { ...goal, projectedIncomes: incomes };
+  });
+
+  if (changed) {
+    localStorage.setItem(GOALS_KEY, JSON.stringify(updatedGoals));
+  }
+}
+
+function ensureProjectedIncomesPersisted(remoteData?: Record<string, any>): void {
+  if (typeof window === 'undefined') return;
+
+  const localStable = readJson<unknown[]>(PROJECTED_INCOMES_KEY, []);
+  const localGoals = readJson<any[]>(GOALS_KEY, []);
+  const remoteStable = remoteData?.[PROJECTED_INCOMES_KEY] ?? [];
+  const remoteGoals = remoteData?.[GOALS_KEY] ?? [];
+
+  const merged = mergeProjectedIncomes(
+    DEFAULT_QUINCE_PROJECTED,
+    getQuinceProjectedFromGoals(remoteGoals),
+    remoteStable,
+    getQuinceProjectedFromGoals(localGoals),
+    localStable
+  );
+
+  persistProjectedIncomes(merged);
+}
 
 export function gatherLocalData(): Record<string, any> {
+  if (typeof window !== 'undefined') {
+    ensureProjectedIncomesPersisted();
+  }
+
   const data: Record<string, any> = {};
   for (const key of STORAGE_KEYS) {
     if (typeof window === 'undefined') continue;
@@ -217,28 +330,19 @@ export function applyRemoteData(data: Record<string, any>): void {
     }
   }
   // Run migrations after applying remote data
-  runMigrations();
+  runMigrations(data);
 }
 
-// ─── Migrations ──────────────────────────────────────────────
-const DEFAULT_QUINCE_PROJECTED = [
-  { id: 'pi-1', date: '2026-06-05', amount: 41760, description: 'Sueldo', received: false },
-  { id: 'pi-2', date: '2026-06-20', amount: 21000, description: '1/2 Aguinaldo', received: false },
-  { id: 'pi-3', date: '2026-07-01', amount: 40000, description: 'Sueldo', received: false },
-  { id: 'pi-4', date: '2026-07-30', amount: 9000, description: 'Ingreso extra', received: false },
-  { id: 'pi-5', date: '2026-08-03', amount: 40000, description: 'Sueldo', received: false },
-];
-
-function runMigrations(): void {
+function runMigrations(remoteData?: Record<string, any>): void {
   if (typeof window === 'undefined') return;
   try {
-    const raw = localStorage.getItem('mf_goals');
+    const raw = localStorage.getItem(GOALS_KEY);
     if (!raw) return;
     const goals = JSON.parse(raw);
     let migrated = false;
     const updated = goals.map((g: any) => {
       if (!g.projectedIncomes || g.projectedIncomes.length === 0) {
-        if (g.id === 'quinceanera-2026') {
+        if (g.id === QUINCE_GOAL_ID) {
           migrated = true;
           return { ...g, projectedIncomes: DEFAULT_QUINCE_PROJECTED };
         }
@@ -250,8 +354,9 @@ function runMigrations(): void {
       return g;
     });
     if (migrated) {
-      localStorage.setItem('mf_goals', JSON.stringify(updated));
+      localStorage.setItem(GOALS_KEY, JSON.stringify(updated));
     }
+    ensureProjectedIncomesPersisted(remoteData);
   } catch {}
 }
 

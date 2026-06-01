@@ -73,6 +73,28 @@ const DEFAULT_QUINCE_PROJECTED: ProjectedIncome[] = [
   { id: 'pi-5', date: '2026-08-03', amount: 40000, description: 'Sueldo', received: false },
 ];
 
+const STABLE_PROJECTED_KEY = 'mf_projected_incomes';
+const QUINCE_GOAL_ID = 'quinceanera-2026';
+
+const mergeProjectedIncomes = (...sources: ProjectedIncome[][]): ProjectedIncome[] => {
+  const merged = new Map<string, ProjectedIncome>();
+
+  for (const source of sources) {
+    for (const income of source) {
+      merged.set(income.id, { ...income, received: Boolean(income.received) });
+    }
+  }
+
+  return Array.from(merged.values()).sort((a, b) => a.date.localeCompare(b.date));
+};
+
+const getStableProjectedIncomes = (goalIncomes: ProjectedIncome[] = []): ProjectedIncome[] => {
+  const stable = load<ProjectedIncome[]>(STABLE_PROJECTED_KEY, []);
+  const incomes = mergeProjectedIncomes(DEFAULT_QUINCE_PROJECTED, goalIncomes, stable);
+  save(STABLE_PROJECTED_KEY, incomes);
+  return incomes;
+};
+
 const DEFAULT_GOALS: Goal[] = [
   {
     id: 'quinceanera-2026',
@@ -253,18 +275,19 @@ export const deleteTransaction = (id: string): { success: boolean } => {
 // ─── Goals ───────────────────────────────────────────────────
 export const getGoals = (): Goal[] => {
   const goals = load<Goal[]>(KEYS.goals, []);
-  // Migration: add projectedIncomes to goals that don't have it or have empty array
+  // Migration: keep Quinceañera projected incomes in the goal and in the stable key.
   let migrated = false;
   const updated = goals.map(g => {
-    if (!g.projectedIncomes || g.projectedIncomes.length === 0) {
-      if (g.id === 'quinceanera-2026') {
+    if (g.id === QUINCE_GOAL_ID) {
+      const projectedIncomes = getStableProjectedIncomes(g.projectedIncomes ?? []);
+      if (JSON.stringify(g.projectedIncomes ?? []) !== JSON.stringify(projectedIncomes)) {
         migrated = true;
-        return { ...g, projectedIncomes: DEFAULT_QUINCE_PROJECTED };
       }
-      if (!g.projectedIncomes) {
-        migrated = true;
-        return { ...g, projectedIncomes: [] };
-      }
+      return { ...g, projectedIncomes };
+    }
+    if (!g.projectedIncomes) {
+      migrated = true;
+      return { ...g, projectedIncomes: [] };
     }
     return g;
   });
@@ -400,20 +423,6 @@ export const deleteGoalItem = (goalId: string, itemId: string): { success: boole
 };
 
 export const toggleProjectedIncome = (goalId: string, incomeId: string): { success: boolean } => {
-  // ALSO update the separate stable key that Gist sync doesn't touch
-  const STABLE_KEY = 'mf_projected_incomes';
-  try {
-    const stableRaw = localStorage.getItem(STABLE_KEY);
-    if (stableRaw) {
-      const stableIncomes = JSON.parse(stableRaw);
-      const sIdx = stableIncomes.findIndex((pi: any) => pi.id === incomeId);
-      if (sIdx !== -1) {
-        stableIncomes[sIdx].received = !stableIncomes[sIdx].received;
-        localStorage.setItem(STABLE_KEY, JSON.stringify(stableIncomes));
-      }
-    }
-  } catch {}
-
   const goals = getGoals();
   const idx = goals.findIndex(g => g.id === goalId);
   if (idx === -1) return { success: true };
@@ -421,6 +430,9 @@ export const toggleProjectedIncome = (goalId: string, incomeId: string): { succe
   if (incomeIdx === -1) return { success: true };
   goals[idx].projectedIncomes[incomeIdx].received = !goals[idx].projectedIncomes[incomeIdx].received;
   goals[idx].updatedAt = now();
+  if (goalId === QUINCE_GOAL_ID) {
+    save(STABLE_PROJECTED_KEY, goals[idx].projectedIncomes);
+  }
   save(KEYS.goals, goals);
   return { success: true };
 };
