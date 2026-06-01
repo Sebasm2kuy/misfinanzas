@@ -1081,7 +1081,7 @@ export default function Home() {
 
   // ─── RENDER ───────────────────────────────────────────────
   // Cache-bust version - forces new chunk hash on every deploy
-  const APP_VERSION = 'v3.5-plan-definitivo';
+  const APP_VERSION = 'v3.6-force-bust';
 
   return (
     <div className="min-h-screen flex bg-slate-50" data-app-version={APP_VERSION}>
@@ -3273,10 +3273,17 @@ function PlanTab({
   onDeleteItem: (goalId: string, itemId: string) => void;
   onAddItem: (goalId: string) => void;
 }) {
-  // Ensure Quinceañera goal ALWAYS has projected incomes (bypass Gist/migration issues)
+  // ALWAYS use hardcoded projected incomes for Quinceañera goal
+  // This is completely independent of localStorage/Gist - data is embedded in JS
   const safeGoals = goals.map(g => {
-    if (g.id === 'quinceanera-2026' && (!g.projectedIncomes || g.projectedIncomes.length === 0)) {
-      return { ...g, projectedIncomes: FALLBACK_QUINCE_INCOMES };
+    if (g.id === 'quinceanera-2026') {
+      // Merge: use hardcoded data, but preserve 'received' state from stored data
+      const stored = g.projectedIncomes || [];
+      const merged = FALLBACK_QUINCE_INCOMES.map(fi => {
+        const match = stored.find(s => s.id === fi.id && s.received);
+        return match ? { ...fi, received: true } : fi;
+      });
+      return { ...g, projectedIncomes: merged };
     }
     return g;
   });
@@ -3861,6 +3868,67 @@ function GoalsTab({
                       </motion.div>
                     )}
                   </AnimatePresence>
+
+                  {/* Projected Incomes Summary (always shown for Quinceañera) */}
+                  {isQuin && (() => {
+                    const stored = goal.projectedIncomes || [];
+                    const incomes = FALLBACK_QUINCE_INCOMES.map(fi => {
+                      const match = stored.find(s => s.id === fi.id && s.received);
+                      return match ? { ...fi, received: true } : fi;
+                    });
+                    const total = incomes.reduce((s, pi) => s + pi.amount, 0);
+                    const received = incomes.filter(pi => pi.received).reduce((s, pi) => s + pi.amount, 0);
+                    const pending = total - received;
+                    const projectedTotal = goal.savedAmount + pending;
+                    const willReach = projectedTotal >= goal.targetAmount;
+
+                    return (
+                      <div className="mt-3 rounded-xl border border-fuchsia-200 dark:border-fuchsia-800 overflow-hidden">
+                        <div className="bg-gradient-to-r from-fuchsia-500 to-pink-500 px-3 py-2 flex items-center justify-between text-white">
+                          <div className="flex items-center gap-1.5">
+                            <TrendingUp className="h-3.5 w-3.5" />
+                            <span className="text-xs font-semibold">Ingresos Previstos</span>
+                          </div>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${willReach ? 'bg-white/20' : 'bg-amber-400/30'}`}>
+                            {willReach ? 'Llegas a la meta' : 'Faltan fondos'}
+                          </span>
+                        </div>
+                        <div className="p-2.5 space-y-1">
+                          {incomes.map((pi) => (
+                            <div
+                              key={pi.id}
+                              className={`flex items-center gap-1.5 text-xs rounded-md px-2 py-1.5 ${
+                                pi.received
+                                  ? 'bg-emerald-50 dark:bg-emerald-950/30'
+                                  : new Date(pi.date) <= new Date()
+                                    ? 'bg-amber-50 dark:bg-amber-950/20'
+                                    : ''
+                              }`}
+                            >
+                              <Checkbox
+                                checked={pi.received}
+                                onCheckedChange={() => onToggleProjectedIncome(goal.id, pi.id, pi.description)}
+                                className={pi.received ? 'border-emerald-500' : 'h-3.5 w-3.5'}
+                              />
+                              <span className={`flex-1 truncate ${pi.received ? 'line-through text-muted-foreground' : 'font-medium'}`}>
+                                {pi.description}
+                              </span>
+                              <span className="text-muted-foreground">{formatDateShort(pi.date)}</span>
+                              <span className={`font-bold ${pi.received ? 'text-muted-foreground' : 'text-emerald-600'}`}>
+                                {formatCurrency(pi.amount)}
+                              </span>
+                            </div>
+                          ))}
+                          <div className="border-t mt-1 pt-1.5 flex justify-between text-xs">
+                            <span className="text-muted-foreground">Ahorrado + Pendiente</span>
+                            <span className={`font-bold ${willReach ? 'text-emerald-600' : 'text-amber-600'}`}>
+                              {formatCurrency(projectedTotal)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </CardContent>
               </Card>
             </motion.div>
