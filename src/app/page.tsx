@@ -138,7 +138,7 @@ export default function Home() {
   const [showPassword, setShowPassword] = useState(false);
 
   // ── State ──
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'transactions' | 'goals'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'transactions' | 'goals' | 'plan'>('dashboard');
   const [settings, setSettings] = useState<Settings | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -871,6 +871,7 @@ export default function Home() {
   const navItems = [
     { id: 'dashboard' as const, label: 'Dashboard', icon: BarChart3 },
     { id: 'transactions' as const, label: 'Transacciones', icon: Activity },
+    { id: 'plan' as const, label: 'Plan de Ahorro', icon: PiggyBank },
     { id: 'goals' as const, label: 'Metas', icon: Target },
   ];
 
@@ -1117,6 +1118,13 @@ export default function Home() {
             <span className="text-[10px] font-medium">Movimientos</span>
           </button>
           <button
+            onClick={() => setActiveTab('plan')}
+            className={`flex flex-col items-center justify-center gap-0.5 w-full h-full transition-colors ${activeTab === 'plan' ? 'text-emerald-600' : 'text-gray-400'}`}
+          >
+            <PiggyBank className="h-5 w-5" />
+            <span className="text-[10px] font-medium">Plan</span>
+          </button>
+          <button
             onClick={() => setActiveTab('goals')}
             className={`flex flex-col items-center justify-center gap-0.5 w-full h-full transition-colors ${activeTab === 'goals' ? 'text-emerald-600' : 'text-gray-400'}`}
           >
@@ -1193,6 +1201,25 @@ export default function Home() {
                   onDeleteGoal={(id, name) => setDeleteConfirm({ type: 'goal', id, name })}
                   onToggleItem={handleToggleItemPaid}
                   onToggleProjectedIncome={handleToggleProjectedIncome}
+                  onEditItemCost={(goalId, itemId, cost) => setEditingItemCost({ goalId, itemId, cost: String(cost) })}
+                  onDeleteItem={(goalId, itemId) => setDeleteConfirm({ type: 'goalItem', id: itemId, name: goalId + ':' + itemId })}
+                  onAddItem={(goalId) => {
+                    setShowAddItem(goalId);
+                    setNewItem({ name: '', estimatedCost: '' });
+                  }}
+                />
+              </motion.div>
+            )}
+            {activeTab === 'plan' && (
+              <motion.div key="plan" {...FADE_IN}>
+                <PlanTab
+                  goals={goals}
+                  onToggleProjectedIncome={handleToggleProjectedIncome}
+                  onAddSavings={(g) => {
+                    setShowAddSavings(g);
+                    setSavingsAmount('');
+                  }}
+                  onToggleItem={handleToggleItemPaid}
                   onEditItemCost={(goalId, itemId, cost) => setEditingItemCost({ goalId, itemId, cost: String(cost) })}
                   onDeleteItem={(goalId, itemId) => setDeleteConfirm({ type: 'goalItem', id: itemId, name: goalId + ':' + itemId })}
                   onAddItem={(goalId) => {
@@ -3178,6 +3205,301 @@ function TransactionsTab({
   );
 }
 
+// ─── PLAN DE AHORRO TAB ────────────────────────────────────────
+function PlanTab({
+  goals,
+  onToggleProjectedIncome,
+  onAddSavings,
+  onToggleItem,
+  onEditItemCost,
+  onDeleteItem,
+  onAddItem,
+}: {
+  goals: Goal[];
+  onToggleProjectedIncome: (goalId: string, incomeId: string, desc: string) => void;
+  onAddSavings: (g: Goal) => void;
+  onToggleItem: (goalId: string, item: GoalItem) => void;
+  onEditItemCost: (goalId: string, itemId: string, cost: number) => void;
+  onDeleteItem: (goalId: string, itemId: string) => void;
+  onAddItem: (goalId: string) => void;
+}) {
+  const goalsWithPlan = goals.filter(g => g.deadline && g.savedAmount < g.targetAmount);
+
+  return (
+    <div className="space-y-4 sm:space-y-6">
+      <div className="hidden lg:flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Plan de Ahorro</h2>
+          <p className="text-muted-foreground text-sm">Proyección de ingresos y metas</p>
+        </div>
+      </div>
+
+      {goalsWithPlan.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <PiggyBank className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+            <p className="text-muted-foreground text-sm">No hay metas activas con plan de ahorro</p>
+          </CardContent>
+        </Card>
+      ) : (
+        goalsWithPlan.map((goal, idx) => {
+          const isQuin = goal.id === 'quinceanera-2026';
+          const remaining = goal.targetAmount - goal.savedAmount;
+          const now = new Date();
+          const deadlineDate = new Date(goal.deadline!);
+          const diffMs = deadlineDate.getTime() - now.getTime();
+          const monthsLeft = diffMs > 0 ? Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24 * 30.44))) : 0;
+          const monthlyNeeded = monthsLeft > 0 ? remaining / monthsLeft : 0;
+
+          const projectedIncomes = goal.projectedIncomes ?? [];
+          const totalProjected = projectedIncomes.reduce((s, pi) => s + pi.amount, 0);
+          const receivedProjected = projectedIncomes.filter(pi => pi.received).reduce((s, pi) => s + pi.amount, 0);
+          const pendingProjected = totalProjected - receivedProjected;
+          const projectedWithSavings = goal.savedAmount + pendingProjected;
+          const willReachGoal = projectedWithSavings >= goal.targetAmount;
+          const surplus = projectedWithSavings - goal.targetAmount;
+          const pct = formatPercent(goal.savedAmount, goal.targetAmount);
+
+          return (
+            <motion.div
+              key={goal.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.1 }}
+              className="space-y-3"
+            >
+              {/* Goal Header */}
+              <Card className={`overflow-hidden ${isQuin ? 'border-pink-300 ring-1 ring-pink-200' : ''}`}>
+                {isQuin && (
+                  <div className="bg-gradient-to-r from-pink-500 to-fuchsia-500 p-3 sm:p-4 text-white">
+                    <div className="flex items-center gap-2">
+                      <PartyPopper className="h-5 w-5" />
+                      <Crown className="h-4 w-4" />
+                      <span className="text-sm font-semibold">Plan de Ahorro - Quinceañera</span>
+                    </div>
+                  </div>
+                )}
+                <CardContent className="p-3 sm:p-5 space-y-4">
+                  {/* Progress bar */}
+                  <div>
+                    <div className="flex justify-between text-xs sm:text-sm mb-1.5">
+                      <span className="text-muted-foreground truncate mr-2">{formatCurrency(goal.savedAmount)} de {formatCurrency(goal.targetAmount)}</span>
+                      <span className="font-semibold shrink-0" style={{ color: goal.color }}>{pct}%</span>
+                    </div>
+                    <div className="h-3 bg-muted rounded-full overflow-hidden">
+                      <motion.div
+                        className="h-full rounded-full"
+                        style={{ backgroundColor: goal.color }}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${Math.min(pct, 100)}%` }}
+                        transition={{ duration: 1 }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Monthly savings plan */}
+                  <div className={`rounded-xl p-3 space-y-2.5 ${isQuin ? 'bg-pink-50 dark:bg-pink-950/30 border border-pink-200 dark:border-pink-800' : 'bg-muted/50 border border-border'}`}>
+                    <div className="flex items-center gap-2">
+                      <Calculator className={`h-4 w-4 ${isQuin ? 'text-pink-600' : 'text-primary'}`} />
+                      <span className={`text-xs font-semibold ${isQuin ? 'text-pink-700 dark:text-pink-300' : ''}`}>Resumen Mensual</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="space-y-0.5">
+                        <p className="text-[10px] sm:text-xs text-muted-foreground">Falta ahorrar</p>
+                        <p className={`text-xs sm:text-sm font-bold ${isQuin ? 'text-pink-700 dark:text-pink-300' : ''}`}>{formatCurrency(remaining)}</p>
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-[10px] sm:text-xs text-muted-foreground">Meses</p>
+                        <div className="flex items-center justify-center gap-1">
+                          <Clock className="h-3 w-3 text-muted-foreground" />
+                          <p className={`text-xs sm:text-sm font-bold ${isQuin ? 'text-pink-700 dark:text-pink-300' : ''}`}>{monthsLeft}</p>
+                        </div>
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-[10px] sm:text-xs text-muted-foreground">Promedio/mes</p>
+                        <p className="text-xs sm:text-sm font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(monthlyNeeded)}</p>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground text-center">
+                      {formatDateShort(now.toISOString())} → {formatDate(goal.deadline!)}
+                    </p>
+                  </div>
+
+                  {/* Agregar ahorro button */}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full h-9 text-xs gap-1"
+                    style={{ borderColor: goal.color, color: goal.color }}
+                    onClick={() => onAddSavings(goal)}
+                  >
+                    <Plus className="h-3 w-3" />
+                    Agregar ahorro manual
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Projected Incomes Card */}
+              {projectedIncomes.length > 0 && (
+                <Card className={`overflow-hidden ${isQuin ? 'border-fuchsia-200' : ''}`}>
+                  <CardContent className="p-3 sm:p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <TrendingUp className={`h-4 w-4 ${willReachGoal ? 'text-emerald-600' : 'text-amber-600'}`} />
+                        <span className="text-xs sm:text-sm font-semibold">Proyección de Ingresos</span>
+                      </div>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${willReachGoal ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'}`}>
+                        {willReachGoal ? '✓ Llegás a la meta' : '✗ Faltan fondos'}
+                      </span>
+                    </div>
+
+                    {/* Income list */}
+                    <div className="space-y-1.5">
+                      {projectedIncomes.map((pi) => {
+                        const isPast = new Date(pi.date) <= new Date();
+                        return (
+                          <div
+                            key={pi.id}
+                            className={`flex items-center gap-2 text-xs sm:text-sm rounded-lg px-2.5 sm:px-3 py-2 transition-colors ${
+                              pi.received
+                                ? 'bg-emerald-50 dark:bg-emerald-950/30 text-muted-foreground'
+                                : isPast
+                                  ? 'bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800'
+                                  : 'bg-background'
+                            }`}
+                          >
+                            <Checkbox
+                              checked={pi.received}
+                              onCheckedChange={() => onToggleProjectedIncome(goal.id, pi.id, pi.description)}
+                              className={pi.received ? 'border-emerald-500' : ''}
+                            />
+                            <span className={`flex-1 min-w-0 truncate ${pi.received ? 'line-through' : 'font-medium'}`}>
+                              {pi.description}
+                            </span>
+                            <span className="text-muted-foreground shrink-0">
+                              {formatDateShort(pi.date)}
+                            </span>
+                            <span className={`font-bold shrink-0 ${pi.received ? 'text-muted-foreground' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                              {formatCurrency(pi.amount)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Summary */}
+                    <Separator />
+                    <div className="space-y-1.5 text-xs sm:text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Pendiente por cobrar</span>
+                        <span className="font-semibold">{formatCurrency(pendingProjected)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Ahorrado + pendiente</span>
+                        <span className={`font-bold ${willReachGoal ? 'text-emerald-600' : 'text-amber-600'}`}>
+                          {formatCurrency(projectedWithSavings)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Meta</span>
+                        <span className="font-semibold">{formatCurrency(goal.targetAmount)}</span>
+                      </div>
+                      {willReachGoal ? (
+                        <div className="flex justify-between bg-emerald-50 dark:bg-emerald-950/30 rounded-lg px-3 py-2 mt-1">
+                          <span className="text-emerald-700 dark:text-emerald-300 font-medium">Sobrante estimado</span>
+                          <span className="text-emerald-700 dark:text-emerald-300 font-bold">{formatCurrency(surplus)}</span>
+                        </div>
+                      ) : (
+                        <div className="flex justify-between bg-amber-50 dark:bg-amber-950/30 rounded-lg px-3 py-2 mt-1">
+                          <span className="text-amber-700 dark:text-amber-300 font-medium">Faltaría</span>
+                          <span className="text-amber-700 dark:text-amber-300 font-bold">{formatCurrency(-surplus)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Items breakdown */}
+              {goal.items.length > 0 && (
+                <Card>
+                  <CardContent className="p-3 sm:p-5 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Target className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-xs sm:text-sm font-semibold">Items de la meta</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-muted-foreground px-1">
+                      <span>Estimado: {formatCurrency(goal.items.reduce((s, i) => s + i.estimatedCost, 0))}</span>
+                      <span>Pagado: {formatCurrency(goal.items.filter(i => i.isPaid).reduce((s, i) => s + i.actualCost, 0))}</span>
+                    </div>
+                    <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                      {goal.items.map((item) => (
+                        <div
+                          key={item.id}
+                          className={`flex items-center gap-2 p-2 rounded-lg border text-xs sm:text-sm transition-colors ${
+                            item.isPaid
+                              ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800'
+                              : 'bg-background border-border'
+                          }`}
+                        >
+                          <Checkbox
+                            checked={item.isPaid}
+                            onCheckedChange={() => onToggleItem(goal.id, item)}
+                            className={item.isPaid ? 'border-emerald-500' : ''}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-xs sm:text-sm ${item.isPaid ? 'line-through text-muted-foreground' : 'font-medium'}`}>
+                              {item.name}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-muted-foreground text-xs">{formatCurrency(item.estimatedCost)}</span>
+                            {item.isPaid && (
+                              <span className="text-emerald-600 text-xs font-medium">{formatCurrency(item.actualCost)}</span>
+                            )}
+                            {!item.isPaid && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={() => onEditItemCost(goal.id, item.id, item.estimatedCost)}
+                              >
+                                <span className="text-xs font-medium" style={{ color: goal.color }}>$</span>
+                              </Button>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                              onClick={() => onDeleteItem(goal.id, item.id)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full h-8 text-xs gap-1"
+                      style={{ borderColor: goal.color, color: goal.color }}
+                      onClick={() => onAddItem(goal.id)}
+                    >
+                      <Plus className="h-3 w-3" />
+                      Agregar item
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+            </motion.div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
 // ─── GOALS TAB ────────────────────────────────────────────────
 function GoalsTab({
   goals,
@@ -3361,97 +3683,6 @@ function GoalsTab({
                         <p className="text-[10px] text-muted-foreground text-center">
                           Desde hoy ({formatDateShort(now.toISOString())}) hasta {formatDate(goal.deadline)}
                         </p>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Projected Incomes */}
-                  {!isComplete && goal.projectedIncomes && goal.projectedIncomes.length > 0 && (() => {
-                    const remaining = goal.targetAmount - goal.savedAmount;
-                    const totalProjected = goal.projectedIncomes.reduce((s, pi) => s + pi.amount, 0);
-                    const receivedProjected = goal.projectedIncomes.filter(pi => pi.received).reduce((s, pi) => s + pi.amount, 0);
-                    const pendingProjected = totalProjected - receivedProjected;
-                    const projectedWithSavings = goal.savedAmount + pendingProjected;
-                    const willReachGoal = projectedWithSavings >= goal.targetAmount;
-                    const surplus = projectedWithSavings - goal.targetAmount;
-
-                    return (
-                      <div className={`rounded-xl p-3 space-y-2.5 ${isQuin ? 'bg-fuchsia-50 dark:bg-fuchsia-950/20 border border-fuchsia-200 dark:border-fuchsia-800' : 'bg-muted/50 border border-border'}`}>
-                        <div className="flex items-center gap-2 mb-1">
-                          <TrendingUp className={`h-4 w-4 ${willReachGoal ? 'text-emerald-600' : 'text-amber-600'}`} />
-                          <span className={`text-xs font-semibold ${isQuin ? 'text-fuchsia-700 dark:text-fuchsia-300' : ''}`}>
-                            Proyección de Ingresos
-                          </span>
-                          <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-medium ${willReachGoal ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'}`}>
-                            {willReachGoal ? '✓ Llegás a la meta' : '✗ No alcanza'}
-                          </span>
-                        </div>
-
-                        {/* Income list */}
-                        <div className="space-y-1.5">
-                          {goal.projectedIncomes.map((pi, i) => {
-                            const isPast = new Date(pi.date) <= new Date();
-                            return (
-                              <div
-                                key={pi.id}
-                                className={`flex items-center gap-2 text-xs rounded-lg px-2 py-1.5 transition-colors ${
-                                  pi.received
-                                    ? 'bg-emerald-50 dark:bg-emerald-950/30 line-through text-muted-foreground'
-                                    : isPast
-                                      ? 'bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800'
-                                      : 'bg-background'
-                                }`}
-                              >
-                                <Checkbox
-                                  checked={pi.received}
-                                  onCheckedChange={() => onToggleProjectedIncome(goal.id, pi.id, pi.description)}
-                                  className={pi.received ? 'border-emerald-500' : ''}
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <span className={pi.received ? 'line-through text-muted-foreground' : 'font-medium'}>
-                                    {pi.description}
-                                  </span>
-                                </div>
-                                <span className="text-muted-foreground shrink-0">
-                                  {formatDateShort(pi.date)}
-                                </span>
-                                <span className={`font-bold shrink-0 ${pi.received ? 'text-muted-foreground' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                                  {formatCurrency(pi.amount)}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        {/* Summary */}
-                        <Separator />
-                        <div className="space-y-1.5">
-                          <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">Total proyectado (pendiente)</span>
-                            <span className="font-semibold">{formatCurrency(pendingProjected)}</span>
-                          </div>
-                          <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">Ahorrado + proyectado</span>
-                            <span className={`font-bold ${willReachGoal ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                              {formatCurrency(projectedWithSavings)}
-                            </span>
-                          </div>
-                          <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">Meta</span>
-                            <span className="font-semibold">{formatCurrency(goal.targetAmount)}</span>
-                          </div>
-                          {willReachGoal ? (
-                            <div className="flex justify-between text-xs bg-emerald-50 dark:bg-emerald-950/30 rounded-lg px-2 py-1.5 mt-1">
-                              <span className="text-emerald-700 dark:text-emerald-300 font-medium">Sobrante estimado</span>
-                              <span className="text-emerald-700 dark:text-emerald-300 font-bold">{formatCurrency(surplus)}</span>
-                            </div>
-                          ) : (
-                            <div className="flex justify-between text-xs bg-amber-50 dark:bg-amber-950/30 rounded-lg px-2 py-1.5 mt-1">
-                              <span className="text-amber-700 dark:text-amber-300 font-medium">Faltaría</span>
-                              <span className="text-amber-700 dark:text-amber-300 font-bold">{formatCurrency(-surplus)}</span>
-                            </div>
-                          )}
-                        </div>
                       </div>
                     );
                   })()}
