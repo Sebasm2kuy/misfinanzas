@@ -40,6 +40,8 @@ import {
   Key,
   AlertTriangle,
   RotateCcw,
+  Calculator,
+  Clock,
 } from 'lucide-react';
 import {
   BarChart,
@@ -3304,6 +3306,47 @@ function GoalsTab({
                       />
                     </div>
                   </div>
+
+                  {/* Monthly savings plan */}
+                  {!isComplete && goal.deadline && (() => {
+                    const remaining = goal.targetAmount - goal.savedAmount;
+                    if (remaining <= 0) return null;
+                    const now = new Date();
+                    const deadlineDate = new Date(goal.deadline);
+                    const diffMs = deadlineDate.getTime() - now.getTime();
+                    if (diffMs <= 0) return null;
+                    const monthsLeft = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24 * 30.44)));
+                    const monthlyNeeded = remaining / monthsLeft;
+
+                    return (
+                      <div className={`rounded-xl p-3 space-y-2 ${isQuin ? 'bg-pink-50 dark:bg-pink-950/30 border border-pink-200 dark:border-pink-800' : 'bg-muted/50 border border-border'}`}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <Calculator className={`h-4 w-4 ${isQuin ? 'text-pink-600' : 'text-primary'}`} />
+                          <span className={`text-xs font-semibold ${isQuin ? 'text-pink-700 dark:text-pink-300' : ''}`}>Plan de Ahorro Mensual</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-center">
+                          <div className="space-y-0.5">
+                            <p className="text-xs text-muted-foreground">Falta ahorrar</p>
+                            <p className={`text-sm font-bold ${isQuin ? 'text-pink-700 dark:text-pink-300' : ''}`}>{formatCurrency(remaining)}</p>
+                          </div>
+                          <div className="space-y-0.5">
+                            <p className="text-xs text-muted-foreground">Meses restantes</p>
+                            <div className="flex items-center justify-center gap-1">
+                              <Clock className="h-3 w-3 text-muted-foreground" />
+                              <p className={`text-sm font-bold ${isQuin ? 'text-pink-700 dark:text-pink-300' : ''}`}>{monthsLeft}</p>
+                            </div>
+                          </div>
+                          <div className="space-y-0.5">
+                            <p className="text-xs text-muted-foreground">Promedio/mes</p>
+                            <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(monthlyNeeded)}</p>
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground text-center">
+                          Desde hoy ({formatDateShort(now.toISOString())}) hasta {formatDate(goal.deadline)}
+                        </p>
+                      </div>
+                    );
+                  })()}
 
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
