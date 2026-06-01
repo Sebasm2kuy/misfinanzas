@@ -2251,9 +2251,13 @@ const DAILY_FOOD_GOAL = 400;
 
 function DailyFoodIndicator({ transactions }: { transactions: Transaction[] }) {
   const now = new Date();
-  const currentMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const currentMonth = year + '-' + String(month + 1).padStart(2, '0');
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
   const currentDay = Math.min(now.getDate(), daysInMonth);
+  const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  const monthLabel = monthNames[month] + ' ' + year;
 
   // Find food category dynamically (matches "Comida" or "Alimentación")
   const foodCategory = transactions.find(t =>
@@ -2267,7 +2271,6 @@ function DailyFoodIndicator({ transactions }: { transactions: Transaction[] }) {
     if (foodCategory) {
       if (t.categoryId !== foodCategory.id) return false;
     } else {
-      // Fallback: match by category name
       if (!t.category || (t.category.name.toLowerCase() !== 'comida' && t.category.name.toLowerCase() !== 'alimentación')) return false;
     }
     const d = new Date(t.date);
@@ -2276,10 +2279,20 @@ function DailyFoodIndicator({ transactions }: { transactions: Transaction[] }) {
   });
 
   const totalFoodThisMonth = foodExpenses.reduce((s, t) => s + t.amount, 0);
-  const dailyAverage = currentDay > 0 ? totalFoodThisMonth / currentDay : 0;
-  const percentage = Math.min(100, Math.round((dailyAverage / DAILY_FOOD_GOAL) * 100));
-  const isOverBudget = dailyAverage > DAILY_FOOD_GOAL;
-  const remaining = Math.max(0, DAILY_FOOD_GOAL - dailyAverage);
+  const monthlyBudget = DAILY_FOOD_GOAL * daysInMonth;
+
+  // Count unique days with spending for accurate daily average
+  const daysWithSpending = new Set(foodExpenses.map(t => new Date(t.date).getDate())).size;
+  const dailyAverage = daysWithSpending > 0 ? totalFoodThisMonth / daysWithSpending : 0;
+
+  // Monthly percentage (vs monthly budget, not daily)
+  const monthlyPercentage = Math.min(100, Math.round((totalFoodThisMonth / monthlyBudget) * 100));
+  const isOverMonthlyBudget = totalFoodThisMonth > monthlyBudget;
+  const monthlyRemaining = Math.max(0, monthlyBudget - totalFoodThisMonth);
+
+  // Remaining daily budget for rest of month
+  const daysLeft = Math.max(0, daysInMonth - currentDay);
+  const remainingDailyBudget = daysLeft > 0 ? Math.max(0, monthlyBudget - totalFoodThisMonth) / daysLeft : 0;
 
   // Get today's spending
   const todayStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
@@ -2287,21 +2300,22 @@ function DailyFoodIndicator({ transactions }: { transactions: Transaction[] }) {
     .filter(t => t.date.startsWith(todayStr))
     .reduce((s, t) => s + t.amount, 0);
 
-  // Projected month total
-  const projectedMonthTotal = dailyAverage * daysInMonth;
-
-  // Status colors
-  const barColor = isOverBudget
-    ? percentage > 150 ? '#dc2626' : percentage > 120 ? '#f97316' : '#eab308'
+  // Status based on monthly budget
+  const barColor = isOverMonthlyBudget
+    ? '#dc2626'
+    : monthlyPercentage > 80 ? '#eab308'
     : '#22c55e';
-  const statusBg = isOverBudget
-    ? percentage > 150 ? 'bg-red-50 border-red-200' : percentage > 120 ? 'bg-orange-50 border-orange-200' : 'bg-yellow-50 border-yellow-200'
+  const statusBg = isOverMonthlyBudget
+    ? 'bg-red-50 border-red-200'
+    : monthlyPercentage > 80 ? 'bg-yellow-50 border-yellow-200'
     : 'bg-emerald-50 border-emerald-200';
-  const statusIcon = isOverBudget
-    ? percentage > 150 ? '🔴' : percentage > 120 ? '🟠' : '🟡'
+  const statusIcon = isOverMonthlyBudget
+    ? '🔴'
+    : monthlyPercentage > 80 ? '🟡'
     : '🟢';
-  const statusText = isOverBudget
-    ? percentage > 150 ? 'Presupuesto excedido' : percentage > 120 ? 'Sobre presupuesto' : 'Cerca del limite'
+  const statusText = isOverMonthlyBudget
+    ? 'Presupuesto excedido'
+    : monthlyPercentage > 80 ? 'Cerca del limite'
     : 'Dentro del presupuesto';
 
   return (
@@ -2312,34 +2326,34 @@ function DailyFoodIndicator({ transactions }: { transactions: Transaction[] }) {
           <div className="flex items-center gap-2">
             <span className="text-lg">{statusIcon}</span>
             <div>
-              <p className="font-bold text-sm">Gasto Diario en Comida</p>
-              <p className="text-xs text-muted-foreground">Meta: {formatCurrency(DAILY_FOOD_GOAL)}/día</p>
+              <p className="font-bold text-sm">Gasto Mensual en Comida</p>
+              <p className="text-xs text-muted-foreground">{monthLabel} — Meta: {formatCurrency(DAILY_FOOD_GOAL)}/día ({formatCurrency(monthlyBudget)}/mes)</p>
             </div>
           </div>
           <Badge
             className="text-xs font-semibold px-2.5 py-1"
-            variant={isOverBudget ? 'destructive' : 'default'}
+            variant={isOverMonthlyBudget ? 'destructive' : 'default'}
           >
             {statusText}
           </Badge>
         </div>
 
-        {/* Main numbers */}
-        <div className="flex items-end gap-1.5">
-          <span className={`text-3xl font-bold ${isOverBudget ? 'text-red-600' : 'text-emerald-600'}`}>
-            {formatCurrency(dailyAverage)}
-          </span>
-          <span className="text-sm text-muted-foreground mb-1">/ día promedio</span>
-        </div>
-
-        {/* Progress bar */}
+        {/* Monthly progress */}
         <div className="space-y-1.5">
+          <div className="flex items-end gap-1.5">
+            <span className={`text-3xl font-bold ${isOverMonthlyBudget ? 'text-red-600' : 'text-emerald-600'}`}>
+              {formatCurrency(totalFoodThisMonth)}
+            </span>
+            <span className="text-sm text-muted-foreground mb-1">de {formatCurrency(monthlyBudget)} mensual</span>
+          </div>
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">
-              {percentage}% de la meta
+              {monthlyPercentage}% del presupuesto mensual
             </span>
             <span className="text-muted-foreground">
-              {isOverBudget ? `+${formatCurrency(dailyAverage - DAILY_FOOD_GOAL)} sobre` : `${formatCurrency(remaining)} disponible`}
+              {isOverMonthlyBudget
+                ? `+${formatCurrency(totalFoodThisMonth - monthlyBudget)} sobre`
+                : `${formatCurrency(monthlyRemaining)} disponible`}
             </span>
           </div>
           <div className="h-3 bg-white/80 rounded-full overflow-hidden border border-black/5">
@@ -2347,13 +2361,8 @@ function DailyFoodIndicator({ transactions }: { transactions: Transaction[] }) {
               className="h-full rounded-full"
               style={{ backgroundColor: barColor }}
               initial={{ width: 0 }}
-              animate={{ width: `${Math.min(percentage, 100)}%` }}
+              animate={{ width: `${Math.min(monthlyPercentage, 100)}%` }}
               transition={{ duration: 0.8, ease: 'easeOut' }}
-            />
-            {/* Goal marker line */}
-            <div
-              className="absolute top-0 bottom-0 w-0.5 bg-gray-800/30"
-              style={{ left: '100%' }}
             />
           </div>
         </div>
@@ -2367,26 +2376,39 @@ function DailyFoodIndicator({ transactions }: { transactions: Transaction[] }) {
             </p>
           </div>
           <div className="text-center border-x border-black/5">
-            <p className="text-xs text-muted-foreground">Este mes</p>
-            <p className="text-sm font-bold">{formatCurrency(totalFoodThisMonth)}</p>
+            <p className="text-xs text-muted-foreground">Promedio/día</p>
+            <p className={`text-sm font-bold ${dailyAverage > DAILY_FOOD_GOAL ? 'text-red-600' : 'text-emerald-600'}`}>
+              {formatCurrency(dailyAverage)}
+            </p>
           </div>
           <div className="text-center">
-            <p className="text-xs text-muted-foreground">Proyección</p>
-            <p className={`text-sm font-bold ${projectedMonthTotal > DAILY_FOOD_GOAL * daysInMonth ? 'text-red-600' : 'text-emerald-600'}`}>
-              {formatCurrency(projectedMonthTotal)}
+            <p className="text-xs text-muted-foreground">Resto del mes</p>
+            <p className={`text-sm font-bold ${remainingDailyBudget < DAILY_FOOD_GOAL ? 'text-amber-600' : 'text-emerald-600'}`}>
+              {formatCurrency(remainingDailyBudget)}/día
             </p>
           </div>
         </div>
 
+        {/* Info row */}
+        <div className="flex items-center justify-between text-xs text-muted-foreground bg-white/60 rounded-lg px-3 py-2">
+          <span>{daysWithSpending} {daysWithSpending === 1 ? 'día con gasto' : 'días con gasto'} de {currentDay} transcurridos</span>
+          <span>Quedan {daysLeft} {daysLeft === 1 ? 'día' : 'días'}</span>
+        </div>
+
         {/* Tip */}
-        {isOverBudget && (
+        {isOverMonthlyBudget && (
           <p className="text-xs text-muted-foreground bg-white/50 rounded-lg px-3 py-2">
-            💡 Estás gastando en promedio <strong className="text-red-600">{formatCurrency(dailyAverage - DAILY_FOOD_GOAL)}</strong> más de tu meta diaria en comida. ¡Intenta ajustar!
+            💡 Superaste el presupuesto mensual de comida (<strong className="text-red-600">{formatCurrency(monthlyBudget)}</strong>). Tu promedio por día con gasto es <strong className="text-red-600">{formatCurrency(dailyAverage)}</strong>.
           </p>
         )}
-        {!isOverBudget && totalFoodThisMonth > 0 && (
+        {!isOverMonthlyBudget && dailyAverage > DAILY_FOOD_GOAL && (
           <p className="text-xs text-muted-foreground bg-white/50 rounded-lg px-3 py-2">
-            ✨ ¡Vas bien! Llevas un promedio de <strong className="text-emerald-600">{formatCurrency(remaining)}</strong> disponible por día.
+            ⚠️ Tu promedio por día con gasto (<strong className="text-amber-600">{formatCurrency(dailyAverage)}</strong>) supera la meta de {formatCurrency(DAILY_FOOD_GOAL)}/día. ¡Intenta ajustar!
+          </p>
+        )}
+        {!isOverMonthlyBudget && dailyAverage <= DAILY_FOOD_GOAL && totalFoodThisMonth > 0 && (
+          <p className="text-xs text-muted-foreground bg-white/50 rounded-lg px-3 py-2">
+            ✨ ¡Vas bien! Podes gastar hasta <strong className="text-emerald-600">{formatCurrency(remainingDailyBudget)}</strong>/día el resto del mes para quedar dentro del presupuesto.
           </p>
         )}
       </CardContent>
@@ -2444,7 +2466,8 @@ function DailyFoodChart({ transactions }: { transactions: Transaction[] }) {
   });
 
   const totalThisMonth = foodExpenses.reduce((s, t) => s + t.amount, 0);
-  const avgDaily = currentDay > 0 ? Math.round(totalThisMonth / currentDay) : 0;
+  const daysWithSpending = new Set(foodExpenses.map(t => new Date(t.date).getDate())).size;
+  const avgDaily = daysWithSpending > 0 ? Math.round(totalThisMonth / daysWithSpending) : 0;
   const maxSpend = Math.max(...chartData.map(d => d.gasto), 400);
 
   return (
