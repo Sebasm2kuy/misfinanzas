@@ -1065,8 +1065,11 @@ export default function Home() {
   }
 
   // ─── RENDER ───────────────────────────────────────────────
+  // Cache-bust version - forces new chunk hash on every deploy
+  const APP_VERSION = 'v3.2-fix';
+
   return (
-    <div className="min-h-screen flex bg-slate-50">
+    <div className="min-h-screen flex bg-slate-50" data-app-version={APP_VERSION}>
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex w-64 border-r bg-white flex-col fixed h-screen">
         <SidebarContent />
