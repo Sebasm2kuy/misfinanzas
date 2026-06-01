@@ -43,10 +43,9 @@ export default function RootLayout({
         <meta httpEquiv="Pragma" content="no-cache" />
         <meta httpEquiv="Expires" content="0" />
 
-        {/* This script writes projected incomes to a SEPARATE localStorage key
-            that is NOT in the Gist sync list. The Gist sync only syncs:
-            mf_settings, mf_categories, mf_transactions, mf_goals, mf_accounts, mf_seeded
-            So mf_projected_incomes will NEVER be overwritten by sync. */}
+        {/* This script keeps projected incomes in a separate localStorage key.
+            The sync layer now also uploads this key and merges it with the goal
+            data so GitHub restores cannot erase future planned incomes. */}
         <script dangerouslySetInnerHTML={{
           __html: `
             (function() {

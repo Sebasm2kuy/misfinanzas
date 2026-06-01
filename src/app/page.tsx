@@ -599,7 +599,7 @@ export default function Home() {
       const arrayBuffer = await file.arrayBuffer();
       const wb = XLSX.read(arrayBuffer, { type: 'array' });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows: (string | number | undefined)[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
       if (rows.length < 2) {
         setImportError('El archivo está vacío o no tiene datos suficientes.');
@@ -3262,7 +3262,7 @@ const FALLBACK_QUINCE_INCOMES: Array<{ id: string; date: string; amount: number;
   { id: 'pi-5', date: '2026-08-03', amount: 40000, description: 'Sueldo', received: false },
 ];
 
-// Read projected incomes from SEPARATE localStorage key that Gist sync does NOT touch
+// Read projected incomes from the stable localStorage key synced and merged by GitHub sync
 function getStableProjectedIncomes(): Array<{ id: string; date: string; amount: number; description: string; received: boolean }> {
   try {
     const raw = localStorage.getItem('mf_projected_incomes');
@@ -3291,8 +3291,7 @@ function PlanTab({
   onDeleteItem: (goalId: string, itemId: string) => void;
   onAddItem: (goalId: string) => void;
 }) {
-  // For Quinceañera: ALWAYS use stable projected incomes from separate localStorage key
-  // This key is NEVER synced to Gist, so sync can NEVER overwrite it
+  // For Quinceañera: prefer the stable projected incomes key that sync preserves and merges
   const stableIncomes = getStableProjectedIncomes();
 
   const safeGoals = goals.map(g => {
