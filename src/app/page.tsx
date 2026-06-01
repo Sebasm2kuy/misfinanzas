@@ -896,7 +896,7 @@ export default function Home() {
     { id: 'goals' as const, label: 'Metas', icon: Target },
   ];
 
-  const SidebarContent = () => (
+  const renderSidebarContent = () => (
     <div className="flex flex-col h-full">
       <div className="p-6 pb-4">
         <div className="flex items-center gap-3">
@@ -1093,7 +1093,7 @@ export default function Home() {
     <div className="min-h-screen flex bg-slate-50" data-app-version={APP_VERSION}>
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex w-64 border-r bg-white flex-col fixed h-screen">
-        <SidebarContent />
+        {renderSidebarContent()}
       </aside>
 
       {/* Mobile Top Bar */}
@@ -3305,10 +3305,10 @@ function PlanTab({
   const goalsWithPlan = safeGoals.filter(g => g.deadline && g.savedAmount < g.targetAmount);
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <div className="hidden lg:flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Plan de Ahorro</h2>
+    <div className="space-y-4 sm:space-y-6 overflow-hidden">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Planificación de Ahorro</h2>
           <p className="text-muted-foreground text-sm">Proyección de ingresos y metas</p>
         </div>
       </div>
@@ -3345,7 +3345,7 @@ function PlanTab({
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.1 }}
-              className="space-y-3"
+              className="space-y-3 min-w-0"
             >
               {/* Goal Header */}
               <Card className={`overflow-hidden ${isQuin ? 'border-pink-300 ring-1 ring-pink-200' : ''}`}>
@@ -3382,21 +3382,21 @@ function PlanTab({
                       <Calculator className={`h-4 w-4 ${isQuin ? 'text-pink-600' : 'text-primary'}`} />
                       <span className={`text-xs font-semibold ${isQuin ? 'text-pink-700 dark:text-pink-300' : ''}`}>Resumen Mensual</span>
                     </div>
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      <div className="space-y-0.5">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div className="rounded-lg bg-background/70 p-2 text-left sm:text-center min-w-0">
                         <p className="text-[10px] sm:text-xs text-muted-foreground">Falta ahorrar</p>
-                        <p className={`text-xs sm:text-sm font-bold ${isQuin ? 'text-pink-700 dark:text-pink-300' : ''}`}>{formatCurrency(remaining)}</p>
+                        <p className={`text-sm font-bold break-words ${isQuin ? 'text-pink-700 dark:text-pink-300' : ''}`}>{formatCurrency(remaining)}</p>
                       </div>
-                      <div className="space-y-0.5">
+                      <div className="rounded-lg bg-background/70 p-2 text-left sm:text-center min-w-0">
                         <p className="text-[10px] sm:text-xs text-muted-foreground">Meses</p>
-                        <div className="flex items-center justify-center gap-1">
-                          <Clock className="h-3 w-3 text-muted-foreground" />
-                          <p className={`text-xs sm:text-sm font-bold ${isQuin ? 'text-pink-700 dark:text-pink-300' : ''}`}>{monthsLeft}</p>
+                        <div className="flex items-center sm:justify-center gap-1">
+                          <Clock className="h-3 w-3 text-muted-foreground shrink-0" />
+                          <p className={`text-sm font-bold ${isQuin ? 'text-pink-700 dark:text-pink-300' : ''}`}>{monthsLeft}</p>
                         </div>
                       </div>
-                      <div className="space-y-0.5">
+                      <div className="rounded-lg bg-background/70 p-2 text-left sm:text-center min-w-0">
                         <p className="text-[10px] sm:text-xs text-muted-foreground">Promedio/mes</p>
-                        <p className="text-xs sm:text-sm font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(monthlyNeeded)}</p>
+                        <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400 break-words">{formatCurrency(monthlyNeeded)}</p>
                       </div>
                     </div>
                     <p className="text-[10px] text-muted-foreground text-center">
@@ -3422,8 +3422,8 @@ function PlanTab({
               {projectedIncomes.length > 0 && (
                 <Card className={`overflow-hidden ${isQuin ? 'border-fuchsia-200' : ''}`}>
                   <CardContent className="p-3 sm:p-5 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-2 min-w-0">
                         <TrendingUp className={`h-4 w-4 ${willReachGoal ? 'text-emerald-600' : 'text-amber-600'}`} />
                         <span className="text-xs sm:text-sm font-semibold">Proyección de Ingresos</span>
                       </div>
@@ -3439,7 +3439,7 @@ function PlanTab({
                         return (
                           <div
                             key={pi.id}
-                            className={`flex items-center gap-2 text-xs sm:text-sm rounded-lg px-2.5 sm:px-3 py-2 transition-colors ${
+                            className={`flex flex-wrap sm:flex-nowrap items-center gap-2 text-xs sm:text-sm rounded-lg px-2.5 sm:px-3 py-2 transition-colors ${
                               pi.received
                                 ? 'bg-emerald-50 dark:bg-emerald-950/30 text-muted-foreground'
                                 : isPast
@@ -3452,13 +3452,13 @@ function PlanTab({
                               onCheckedChange={() => onToggleProjectedIncome(goal.id, pi.id, pi.description)}
                               className={pi.received ? 'border-emerald-500' : ''}
                             />
-                            <span className={`flex-1 min-w-0 truncate ${pi.received ? 'line-through' : 'font-medium'}`}>
+                            <span className={`min-w-0 flex-[1_1_9rem] break-words ${pi.received ? 'line-through' : 'font-medium'}`}>
                               {pi.description}
                             </span>
-                            <span className="text-muted-foreground shrink-0">
+                            <span className="text-muted-foreground shrink-0 ml-6 sm:ml-0">
                               {formatDateShort(pi.date)}
                             </span>
-                            <span className={`font-bold shrink-0 ${pi.received ? 'text-muted-foreground' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                            <span className={`font-bold shrink-0 ml-auto text-right ${pi.received ? 'text-muted-foreground' : 'text-emerald-600 dark:text-emerald-400'}`}>
                               {formatCurrency(pi.amount)}
                             </span>
                           </div>
@@ -3469,29 +3469,29 @@ function PlanTab({
                     {/* Summary */}
                     <Separator />
                     <div className="space-y-1.5 text-xs sm:text-sm">
-                      <div className="flex justify-between">
+                      <div className="flex justify-between gap-3">
                         <span className="text-muted-foreground">Pendiente por cobrar</span>
-                        <span className="font-semibold">{formatCurrency(pendingProjected)}</span>
+                        <span className="font-semibold text-right break-words">{formatCurrency(pendingProjected)}</span>
                       </div>
-                      <div className="flex justify-between">
+                      <div className="flex justify-between gap-3">
                         <span className="text-muted-foreground">Ahorrado + pendiente</span>
-                        <span className={`font-bold ${willReachGoal ? 'text-emerald-600' : 'text-amber-600'}`}>
+                        <span className={`font-bold text-right break-words ${willReachGoal ? 'text-emerald-600' : 'text-amber-600'}`}>
                           {formatCurrency(projectedWithSavings)}
                         </span>
                       </div>
-                      <div className="flex justify-between">
+                      <div className="flex justify-between gap-3">
                         <span className="text-muted-foreground">Meta</span>
-                        <span className="font-semibold">{formatCurrency(goal.targetAmount)}</span>
+                        <span className="font-semibold text-right break-words">{formatCurrency(goal.targetAmount)}</span>
                       </div>
                       {willReachGoal ? (
-                        <div className="flex justify-between bg-emerald-50 dark:bg-emerald-950/30 rounded-lg px-3 py-2 mt-1">
+                        <div className="flex justify-between gap-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-lg px-3 py-2 mt-1">
                           <span className="text-emerald-700 dark:text-emerald-300 font-medium">Sobrante estimado</span>
-                          <span className="text-emerald-700 dark:text-emerald-300 font-bold">{formatCurrency(surplus)}</span>
+                          <span className="text-emerald-700 dark:text-emerald-300 font-bold text-right break-words">{formatCurrency(surplus)}</span>
                         </div>
                       ) : (
-                        <div className="flex justify-between bg-amber-50 dark:bg-amber-950/30 rounded-lg px-3 py-2 mt-1">
+                        <div className="flex justify-between gap-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg px-3 py-2 mt-1">
                           <span className="text-amber-700 dark:text-amber-300 font-medium">Faltaría</span>
-                          <span className="text-amber-700 dark:text-amber-300 font-bold">{formatCurrency(-surplus)}</span>
+                          <span className="text-amber-700 dark:text-amber-300 font-bold text-right break-words">{formatCurrency(-surplus)}</span>
                         </div>
                       )}
                     </div>
@@ -3507,7 +3507,7 @@ function PlanTab({
                       <Target className="h-4 w-4 text-muted-foreground" />
                       <span className="text-xs sm:text-sm font-semibold">Items de la meta</span>
                     </div>
-                    <div className="flex justify-between text-xs text-muted-foreground px-1">
+                    <div className="flex flex-col gap-1 sm:flex-row sm:justify-between text-xs text-muted-foreground px-1">
                       <span>Estimado: {formatCurrency(goal.items.reduce((s, i) => s + i.estimatedCost, 0))}</span>
                       <span>Pagado: {formatCurrency(goal.items.filter(i => i.isPaid).reduce((s, i) => s + i.actualCost, 0))}</span>
                     </div>
@@ -3527,11 +3527,11 @@ function PlanTab({
                             className={item.isPaid ? 'border-emerald-500' : ''}
                           />
                           <div className="flex-1 min-w-0">
-                            <p className={`text-xs sm:text-sm ${item.isPaid ? 'line-through text-muted-foreground' : 'font-medium'}`}>
+                            <p className={`text-xs sm:text-sm break-words ${item.isPaid ? 'line-through text-muted-foreground' : 'font-medium'}`}>
                               {item.name}
                             </p>
                           </div>
-                          <div className="flex items-center gap-2 shrink-0">
+                          <div className="flex flex-wrap items-center justify-end gap-2 shrink-0 max-w-[55%] sm:max-w-none">
                             <span className="text-muted-foreground text-xs">{formatCurrency(item.estimatedCost)}</span>
                             {item.isPaid && (
                               <span className="text-emerald-600 text-xs font-medium">{formatCurrency(item.actualCost)}</span>
