@@ -132,3 +132,32 @@
     min-height: 44px;
   }
 }
+
+/* Prevent horizontal overflow on mobile */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* Smoother scrolling on mobile */
+@media (max-width: 640px) {
+  * {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+  }
+  
+  /* Prevent text selection on interactive elements */
+  button, a, label, [role="button"] {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+/* Dialog full screen on mobile */
+@media (max-width: 640px) {
+  [data-state="open"].fixed {
+    max-width: calc(100vw - 1rem) !important;
+    max-height: 85vh;
+    overflow-y: auto;
+  }
+}

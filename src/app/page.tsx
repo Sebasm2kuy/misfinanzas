@@ -1071,9 +1071,37 @@ export default function Home() {
         <SidebarContent />
       </aside>
 
+      {/* Mobile Top Bar */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-white/80 backdrop-blur-md border-b px-4 py-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
+              <Wallet className="h-4 w-4 text-white" />
+            </div>
+            <h1 className="text-base font-bold tracking-tight">MiFinanzas</h1>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {githubUser && (
+              <div className="flex items-center">
+                {syncStatus === 'syncing' ? (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-amber-500" />
+                ) : syncStatus === 'synced' ? (
+                  <Cloud className="h-3.5 w-3.5 text-emerald-500" />
+                ) : syncStatus === 'error' ? (
+                  <CloudOff className="h-3.5 w-3.5 text-red-500" />
+                ) : null}
+              </div>
+            )}
+            <button onClick={() => setShowSettings(true)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
+              <SettingsIcon className="h-4.5 w-4.5 text-gray-500" />
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Mobile Bottom Nav */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t shadow-[0_-2px_10px_rgba(0,0,0,0.06)] safe-area-bottom">
-        <div className="flex items-center justify-around h-16">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-t shadow-[0_-2px_10px_rgba(0,0,0,0.06)] safe-area-bottom">
+        <div className="flex items-center justify-around h-14">
           <button
             onClick={() => setActiveTab('dashboard')}
             className={`flex flex-col items-center justify-center gap-0.5 w-full h-full transition-colors ${activeTab === 'dashboard' ? 'text-emerald-600' : 'text-gray-400'}`}
@@ -1107,7 +1135,7 @@ export default function Home() {
 
       {/* Main Content */}
       <main className="flex-1 lg:ml-64 min-h-screen">
-        <div className="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8">
+        <div className="max-w-6xl mx-auto p-3 sm:p-4 lg:p-8 pt-14 lg:pt-8 pb-20 lg:pb-8">
           <AnimatePresence mode="wait">
             {activeTab === 'dashboard' && (
               <motion.div key="dashboard" {...FADE_IN}>
@@ -2245,28 +2273,10 @@ function DashboardTab({
   return (
     <div className="space-y-5">
       {/* Header + Quick Actions */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div>
-            <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Dashboard</h2>
-            <p className="text-muted-foreground text-xs sm:text-sm">Resumen de tus finanzas</p>
-          </div>
-          {githubUser && (
-            <div className="lg:hidden flex items-center gap-1 text-xs text-muted-foreground ml-2">
-              {syncStatus === 'syncing' ? (
-                <RefreshCw className="h-3 w-3 animate-spin text-amber-500" />
-              ) : syncStatus === 'synced' ? (
-                <Cloud className="h-3 w-3 text-emerald-500" />
-              ) : syncStatus === 'error' ? (
-                <CloudOff className="h-3 w-3 text-red-500" />
-              ) : null}
-            </div>
-          )}
-        </div>
-        <div className="hidden sm:block lg:hidden">
-          <Button variant="ghost" size="icon" className="bg-white shadow-sm rounded-xl border" onClick={() => {}}>
-            <Wallet className="h-5 w-5" />
-          </Button>
+      <div className="hidden lg:flex items-center justify-between">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Dashboard</h2>
+          <p className="text-muted-foreground text-xs sm:text-sm">Resumen de tus finanzas</p>
         </div>
       </div>
 
@@ -2303,36 +2313,36 @@ function DashboardTab({
 
       {/* Quick Action Buttons - Gasto & Ingreso */}
       <motion.div
-        className="grid grid-cols-2 gap-3"
+        className="grid grid-cols-2 gap-2.5"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.05 }}
       >
         <button
           onClick={onAddExpense}
-          className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-rose-500 to-rose-600 p-4 text-left shadow-md active:scale-[0.97] transition-transform"
+          className="relative overflow-hidden rounded-xl bg-gradient-to-br from-rose-500 to-rose-600 p-3 sm:p-4 text-left shadow-md active:scale-[0.97] transition-transform"
         >
-          <div className="flex items-center gap-3">
-            <div className="h-11 w-11 rounded-xl bg-white/20 flex items-center justify-center">
-              <ArrowDownRight className="h-6 w-6 text-white" />
+          <div className="flex items-center gap-2.5">
+            <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+              <ArrowDownRight className="h-5 w-5 text-white" />
             </div>
             <div>
-              <p className="text-white font-bold text-base">Gasto</p>
-              <p className="text-rose-100 text-xs">Registrar gasto</p>
+              <p className="text-white font-bold text-sm sm:text-base">Gasto</p>
+              <p className="text-rose-100 text-[10px] sm:text-xs">Registrar gasto</p>
             </div>
           </div>
         </button>
         <button
           onClick={onAddIncome}
-          className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 p-4 text-left shadow-md active:scale-[0.97] transition-transform"
+          className="relative overflow-hidden rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 p-3 sm:p-4 text-left shadow-md active:scale-[0.97] transition-transform"
         >
-          <div className="flex items-center gap-3">
-            <div className="h-11 w-11 rounded-xl bg-white/20 flex items-center justify-center">
-              <ArrowUpRight className="h-6 w-6 text-white" />
+          <div className="flex items-center gap-2.5">
+            <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+              <ArrowUpRight className="h-5 w-5 text-white" />
             </div>
             <div>
-              <p className="text-white font-bold text-base">Ingreso</p>
-              <p className="text-emerald-100 text-xs">Registrar ingreso</p>
+              <p className="text-white font-bold text-sm sm:text-base">Ingreso</p>
+              <p className="text-emerald-100 text-[10px] sm:text-xs">Registrar ingreso</p>
             </div>
           </div>
         </button>
@@ -2370,26 +2380,18 @@ function DashboardTab({
       )}
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
           <Card className="overflow-hidden">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Saldo Actual</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 pt-3 sm:px-6 sm:pt-6">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Saldo</CardTitle>
               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onEditBalance}>
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
+                <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
               </Button>
             </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-2">
-                <span className="text-2xl font-bold">{formatCurrency(currentBalance)}</span>
-                <Badge variant={currentBalance >= 0 ? 'default' : 'destructive'} className="text-xs">
-                  {currentBalance >= 0 ? (
-                    <TrendingUp className="h-3 w-3 mr-1" />
-                  ) : (
-                    <TrendingDown className="h-3 w-3 mr-1" />
-                  )}
-                  {currentBalance >= 0 ? 'Positivo' : 'Negativo'}
-                </Badge>
+            <CardContent className="px-3 pb-3 sm:px-6 sm:pb-6">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-lg sm:text-2xl font-bold">{formatCurrency(currentBalance)}</span>
               </div>
             </CardContent>
           </Card>
@@ -2397,38 +2399,40 @@ function DashboardTab({
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Ingresos del Mes</CardTitle>
-              <ArrowUpRight className="h-4 w-4 text-emerald-500" />
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 pt-3 sm:px-6 sm:pt-6">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Ingresos</CardTitle>
+              <ArrowUpRight className="h-3.5 w-3.5 text-emerald-500" />
             </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-emerald-600">{formatCurrency(stats?.currentMonthIncome ?? 0)}</p>
+            <CardContent className="px-3 pb-3 sm:px-6 sm:pb-6">
+              <p className="text-lg sm:text-2xl font-bold text-emerald-600">{formatCurrency(stats?.currentMonthIncome ?? 0)}</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground">del mes</p>
             </CardContent>
           </Card>
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Gastos del Mes</CardTitle>
-              <ArrowDownRight className="h-4 w-4 text-rose-500" />
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 pt-3 sm:px-6 sm:pt-6">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Gastos</CardTitle>
+              <ArrowDownRight className="h-3.5 w-3.5 text-rose-500" />
             </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-rose-600">{formatCurrency(stats?.currentMonthExpense ?? 0)}</p>
+            <CardContent className="px-3 pb-3 sm:px-6 sm:pb-6">
+              <p className="text-lg sm:text-2xl font-bold text-rose-600">{formatCurrency(stats?.currentMonthExpense ?? 0)}</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground">del mes</p>
             </CardContent>
           </Card>
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Metas Activas</CardTitle>
-              <Target className="h-4 w-4 text-violet-500" />
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 pt-3 sm:px-6 sm:pt-6">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Metas</CardTitle>
+              <Target className="h-3.5 w-3.5 text-violet-500" />
             </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{activeGoals.length}</p>
-              <p className="text-xs text-muted-foreground">
-                {goals.length > 0 && goals.every(g => g.savedAmount >= g.targetAmount) ? '¡Todas completadas!' : `${goals.length - activeGoals.length} completadas`}
+            <CardContent className="px-3 pb-3 sm:px-6 sm:pb-6">
+              <p className="text-lg sm:text-2xl font-bold">{activeGoals.length}</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground">
+                {goals.length > 0 && goals.every(g => g.savedAmount >= g.targetAmount) ? '¡Completadas!' : `${goals.length - activeGoals.length} listas`}
               </p>
             </CardContent>
           </Card>
@@ -2997,8 +3001,8 @@ function TransactionsTab({
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="hidden lg:flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Transacciones</h2>
           <p className="text-muted-foreground text-sm">Historial de ingresos y gastos</p>
@@ -3006,32 +3010,32 @@ function TransactionsTab({
         <div className="flex gap-2">
           <Button variant="outline" onClick={onImportExcel} className="gap-2">
             <FileSpreadsheet className="h-4 w-4" />
-            <span className="hidden sm:inline">Importar</span>
+            Importar
           </Button>
           <Button onClick={onAddTx} className="gap-2">
             <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">Agregar</span>
+            Agregar
           </Button>
         </div>
       </div>
 
       {/* Filters */}
       <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row gap-3">
+        <CardContent className="p-3 sm:p-4">
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar transacción..."
-                className="pl-9"
+                placeholder="Buscar..."
+                className="pl-9 h-10"
                 value={txSearch}
                 onChange={(e) => setTxSearch(e.target.value)}
               />
             </div>
             <div className="flex gap-2">
               <Select value={txFilterType} onValueChange={(v) => setTxFilterType(v as 'all' | 'income' | 'expense')}>
-                <SelectTrigger className="w-36">
-                  <Filter className="h-4 w-4 mr-2" />
+                <SelectTrigger className="w-28 sm:w-36 h-10">
+                  <Filter className="h-4 w-4 mr-1.5" />
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -3203,13 +3207,13 @@ function GoalsTab({
   const isQuinceañera = (g: Goal) => g.id === 'quinceanera-2026';
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="hidden lg:block">
           <h2 className="text-2xl font-bold tracking-tight">Metas de Ahorro</h2>
           <p className="text-muted-foreground text-sm">Sigue tus metas y ahorros</p>
         </div>
-        <Button onClick={onAddGoal} className="gap-2">
+        <Button onClick={onAddGoal} className="gap-2 h-9 sm:h-10">
           <Plus className="h-4 w-4" />
           Nueva Meta
         </Button>
