@@ -289,6 +289,11 @@ export default function Home() {
           sync.applyRemoteData(remoteData);
           toast.success('Datos sincronizados.');
         }
+        // Push corrected data (with projected incomes) to Gist immediately
+        try {
+          const correctedData = sync.gatherLocalData();
+          await sync.saveToGist(stored.token, stored.gistId, correctedData);
+        } catch {}
       }
     } catch {
       setLoginError('Error inesperado. Intenta de nuevo.');
@@ -358,6 +363,16 @@ export default function Home() {
         setIsFirstTime(true);
       }
       await loadAllData();
+
+      // CRITICAL: After migrations fix localStorage, immediately push corrected data to Gist
+      // This prevents the sync loop where Gist keeps overwriting fixed data
+      const st = sync.getStoredAuth();
+      if (st) {
+        try {
+          const correctedData = sync.gatherLocalData();
+          await sync.saveToGist(st.token, st.gistId, correctedData);
+        } catch {}
+      }
     })();
   }, [loadAllData]);
 
@@ -1066,7 +1081,7 @@ export default function Home() {
 
   // ─── RENDER ───────────────────────────────────────────────
   // Cache-bust version - forces new chunk hash on every deploy
-  const APP_VERSION = 'v3.4-mobile-fix';
+  const APP_VERSION = 'v3.5-plan-definitivo';
 
   return (
     <div className="min-h-screen flex bg-slate-50" data-app-version={APP_VERSION}>
@@ -3232,6 +3247,15 @@ function TransactionsTab({
 }
 
 // ─── PLAN DE AHORRO TAB ────────────────────────────────────────
+// Fallback projected incomes - always available regardless of migrations/Gist
+const FALLBACK_QUINCE_INCOMES: Array<{ id: string; date: string; amount: number; description: string; received: boolean }> = [
+  { id: 'pi-1', date: '2026-06-05', amount: 41760, description: 'Sueldo', received: false },
+  { id: 'pi-2', date: '2026-06-20', amount: 21000, description: '1/2 Aguinaldo', received: false },
+  { id: 'pi-3', date: '2026-07-01', amount: 40000, description: 'Sueldo', received: false },
+  { id: 'pi-4', date: '2026-07-30', amount: 9000, description: 'Ingreso extra', received: false },
+  { id: 'pi-5', date: '2026-08-03', amount: 40000, description: 'Sueldo', received: false },
+];
+
 function PlanTab({
   goals,
   onToggleProjectedIncome,
@@ -3249,7 +3273,15 @@ function PlanTab({
   onDeleteItem: (goalId: string, itemId: string) => void;
   onAddItem: (goalId: string) => void;
 }) {
-  const goalsWithPlan = goals.filter(g => g.deadline && g.savedAmount < g.targetAmount);
+  // Ensure Quinceañera goal ALWAYS has projected incomes (bypass Gist/migration issues)
+  const safeGoals = goals.map(g => {
+    if (g.id === 'quinceanera-2026' && (!g.projectedIncomes || g.projectedIncomes.length === 0)) {
+      return { ...g, projectedIncomes: FALLBACK_QUINCE_INCOMES };
+    }
+    return g;
+  });
+
+  const goalsWithPlan = safeGoals.filter(g => g.deadline && g.savedAmount < g.targetAmount);
 
   return (
     <div className="space-y-4 sm:space-y-6">
