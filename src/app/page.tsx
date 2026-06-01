@@ -287,8 +287,9 @@ export default function Home() {
         const remoteData = await sync.loadFromGist(stored.token, stored.gistId);
         if (remoteData) {
           sync.applyRemoteData(remoteData);
-          toast.success('Datos sincronizados.');
         }
+        // CRITICAL: Reload data after sync to update React state with corrected data
+        await loadAllData();
         // Push corrected data (with projected incomes) to Gist immediately
         try {
           const correctedData = sync.gatherLocalData();
@@ -811,6 +812,11 @@ export default function Home() {
         if (hasRemoteData) {
           sync.applyRemoteData(remoteData);
           await loadAllData();
+          // CRITICAL: Push corrected data (with projected incomes) back to Gist
+          try {
+            const correctedData = sync.gatherLocalData();
+            await sync.saveToGist(syncSetupToken.trim(), gid, correctedData);
+          } catch {}
           toast.success(`Datos restaurados desde GitHub como ${username}.`);
           setShowSyncSetup(false);
           setSyncSetupToken('');
@@ -1081,7 +1087,7 @@ export default function Home() {
 
   // ─── RENDER ───────────────────────────────────────────────
   // Cache-bust version - forces new chunk hash on every deploy
-  const APP_VERSION = 'v3.6-force-bust';
+  const APP_VERSION = 'v3.7-inline-fix';
 
   return (
     <div className="min-h-screen flex bg-slate-50" data-app-version={APP_VERSION}>
