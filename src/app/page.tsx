@@ -883,7 +883,7 @@ export default function Home() {
             <Wallet className="h-5 w-5 text-white" />
           </div>
           <div>
-            <h1 className="text-lg font-bold tracking-tight">MiFinanzas</h1>
+            <h1 className="text-lg font-bold tracking-tight">MiFinanzas <span className="text-[9px] text-muted-foreground font-normal">{APP_VERSION}</span></h1>
             <p className="text-xs text-muted-foreground">Control personal</p>
           </div>
         </div>
@@ -1066,7 +1066,7 @@ export default function Home() {
 
   // ─── RENDER ───────────────────────────────────────────────
   // Cache-bust version - forces new chunk hash on every deploy
-  const APP_VERSION = 'v3.2-fix';
+  const APP_VERSION = 'v3.3-sync-fix';
 
   return (
     <div className="min-h-screen flex bg-slate-50" data-app-version={APP_VERSION}>
@@ -1082,7 +1082,7 @@ export default function Home() {
             <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
               <Wallet className="h-4 w-4 text-white" />
             </div>
-            <h1 className="text-base font-bold tracking-tight">MiFinanzas</h1>
+            <h1 className="text-base font-bold tracking-tight">MiFinanzas <span className="text-[9px] text-muted-foreground font-normal ml-1">{APP_VERSION}</span></h1>
           </div>
           <div className="flex items-center gap-1.5">
             {githubUser && (

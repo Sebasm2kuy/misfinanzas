@@ -216,6 +216,43 @@ export function applyRemoteData(data: Record<string, any>): void {
       localStorage.setItem(key, JSON.stringify(data[key]));
     }
   }
+  // Run migrations after applying remote data
+  runMigrations();
+}
+
+// ─── Migrations ──────────────────────────────────────────────
+const DEFAULT_QUINCE_PROJECTED = [
+  { id: 'pi-1', date: '2026-06-05', amount: 41760, description: 'Sueldo', received: false },
+  { id: 'pi-2', date: '2026-06-20', amount: 21000, description: '1/2 Aguinaldo', received: false },
+  { id: 'pi-3', date: '2026-07-01', amount: 40000, description: 'Sueldo', received: false },
+  { id: 'pi-4', date: '2026-07-30', amount: 9000, description: 'Ingreso extra', received: false },
+  { id: 'pi-5', date: '2026-08-03', amount: 40000, description: 'Sueldo', received: false },
+];
+
+function runMigrations(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = localStorage.getItem('mf_goals');
+    if (!raw) return;
+    const goals = JSON.parse(raw);
+    let migrated = false;
+    const updated = goals.map((g: any) => {
+      if (!g.projectedIncomes || g.projectedIncomes.length === 0) {
+        if (g.id === 'quinceanera-2026') {
+          migrated = true;
+          return { ...g, projectedIncomes: DEFAULT_QUINCE_PROJECTED };
+        }
+        if (!g.projectedIncomes) {
+          migrated = true;
+          return { ...g, projectedIncomes: [] };
+        }
+      }
+      return g;
+    });
+    if (migrated) {
+      localStorage.setItem('mf_goals', JSON.stringify(updated));
+    }
+  } catch {}
 }
 
 // ─── Debounced Sync ────────────────────────────────────────────
