@@ -65,6 +65,14 @@ const DEFAULT_QUINCE_ITEMS: GoalItem[] = [
   { id: 'qi-10', goalId: 'quinceanera-2026', name: 'Otros / Imprevistos', estimatedCost: 550, actualCost: 0, isPaid: false, notes: null },
 ];
 
+const DEFAULT_QUINCE_PROJECTED: ProjectedIncome[] = [
+  { id: 'pi-1', date: '2026-06-05', amount: 41760, description: 'Sueldo', received: false },
+  { id: 'pi-2', date: '2026-06-20', amount: 21000, description: '1/2 Aguinaldo', received: false },
+  { id: 'pi-3', date: '2026-07-01', amount: 40000, description: 'Sueldo', received: false },
+  { id: 'pi-4', date: '2026-07-30', amount: 9000, description: 'Ingreso extra', received: false },
+  { id: 'pi-5', date: '2026-08-03', amount: 40000, description: 'Sueldo', received: false },
+];
+
 const DEFAULT_GOALS: Goal[] = [
   {
     id: 'quinceanera-2026',
@@ -77,6 +85,7 @@ const DEFAULT_GOALS: Goal[] = [
     createdAt: now(),
     updatedAt: now(),
     items: DEFAULT_QUINCE_ITEMS,
+    projectedIncomes: DEFAULT_QUINCE_PROJECTED,
   },
 ];
 
@@ -243,7 +252,21 @@ export const deleteTransaction = (id: string): { success: boolean } => {
 
 // ─── Goals ───────────────────────────────────────────────────
 export const getGoals = (): Goal[] => {
-  return load<Goal[]>(KEYS.goals, []);
+  const goals = load<Goal[]>(KEYS.goals, []);
+  // Migration: add projectedIncomes to goals that don't have it
+  let migrated = false;
+  const updated = goals.map(g => {
+    if (!g.projectedIncomes) {
+      migrated = true;
+      if (g.id === 'quinceanera-2026') {
+        return { ...g, projectedIncomes: DEFAULT_QUINCE_PROJECTED };
+      }
+      return { ...g, projectedIncomes: [] };
+    }
+    return g;
+  });
+  if (migrated) save(KEYS.goals, updated);
+  return updated;
 };
 
 export const createGoal = (data: {
@@ -265,6 +288,7 @@ export const createGoal = (data: {
     createdAt: now(),
     updatedAt: now(),
     items: [],
+    projectedIncomes: [],
   };
   goals.push(goal);
   save(KEYS.goals, goals);
@@ -367,6 +391,18 @@ export const deleteGoalItem = (goalId: string, itemId: string): { success: boole
   goals[idx].savedAmount = goals[idx].items
     .filter(i => i.isPaid)
     .reduce((sum, i) => sum + i.actualCost, 0);
+  goals[idx].updatedAt = now();
+  save(KEYS.goals, goals);
+  return { success: true };
+};
+
+export const toggleProjectedIncome = (goalId: string, incomeId: string): { success: boolean } => {
+  const goals = getGoals();
+  const idx = goals.findIndex(g => g.id === goalId);
+  if (idx === -1) return { success: true };
+  const incomeIdx = goals[idx].projectedIncomes.findIndex(pi => pi.id === incomeId);
+  if (incomeIdx === -1) return { success: true };
+  goals[idx].projectedIncomes[incomeIdx].received = !goals[idx].projectedIncomes[incomeIdx].received;
   goals[idx].updatedAt = now();
   save(KEYS.goals, goals);
   return { success: true };

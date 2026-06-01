@@ -528,6 +528,16 @@ export default function Home() {
     }
   };
 
+  const handleToggleProjectedIncome = async (goalId: string, incomeId: string, desc: string) => {
+    try {
+      await api.toggleProjectedIncome(goalId, incomeId);
+      toast.success(`Ingreso "${desc}" marcado como recibido`);
+      await loadAndSync();
+    } catch {
+      toast.error('Error al actualizar ingreso proyectado');
+    }
+  };
+
   const handleUpdateItemCost = async () => {
     if (!editingItemCost) return;
     try {
@@ -1154,6 +1164,7 @@ export default function Home() {
                   }}
                   onDeleteGoal={(id, name) => setDeleteConfirm({ type: 'goal', id, name })}
                   onToggleItem={handleToggleItemPaid}
+                  onToggleProjectedIncome={handleToggleProjectedIncome}
                   onEditItemCost={(goalId, itemId, cost) => setEditingItemCost({ goalId, itemId, cost: String(cost) })}
                   onDeleteItem={(goalId, itemId) => setDeleteConfirm({ type: 'goalItem', id: itemId, name: goalId + ':' + itemId })}
                   onAddItem={(goalId) => {
@@ -3175,6 +3186,7 @@ function GoalsTab({
   onEditItemCost,
   onDeleteItem,
   onAddItem,
+  onToggleProjectedIncome,
 }: {
   goals: Goal[];
   expandedGoal: string | null;
@@ -3186,6 +3198,7 @@ function GoalsTab({
   onEditItemCost: (goalId: string, itemId: string, cost: number) => void;
   onDeleteItem: (goalId: string, itemId: string) => void;
   onAddItem: (goalId: string) => void;
+  onToggleProjectedIncome: (goalId: string, incomeId: string, desc: string) => void;
 }) {
   const isQuinceañera = (g: Goal) => g.id === 'quinceanera-2026';
 
@@ -3344,6 +3357,97 @@ function GoalsTab({
                         <p className="text-[10px] text-muted-foreground text-center">
                           Desde hoy ({formatDateShort(now.toISOString())}) hasta {formatDate(goal.deadline)}
                         </p>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Projected Incomes */}
+                  {!isComplete && goal.projectedIncomes && goal.projectedIncomes.length > 0 && (() => {
+                    const remaining = goal.targetAmount - goal.savedAmount;
+                    const totalProjected = goal.projectedIncomes.reduce((s, pi) => s + pi.amount, 0);
+                    const receivedProjected = goal.projectedIncomes.filter(pi => pi.received).reduce((s, pi) => s + pi.amount, 0);
+                    const pendingProjected = totalProjected - receivedProjected;
+                    const projectedWithSavings = goal.savedAmount + pendingProjected;
+                    const willReachGoal = projectedWithSavings >= goal.targetAmount;
+                    const surplus = projectedWithSavings - goal.targetAmount;
+
+                    return (
+                      <div className={`rounded-xl p-3 space-y-2.5 ${isQuin ? 'bg-fuchsia-50 dark:bg-fuchsia-950/20 border border-fuchsia-200 dark:border-fuchsia-800' : 'bg-muted/50 border border-border'}`}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <TrendingUp className={`h-4 w-4 ${willReachGoal ? 'text-emerald-600' : 'text-amber-600'}`} />
+                          <span className={`text-xs font-semibold ${isQuin ? 'text-fuchsia-700 dark:text-fuchsia-300' : ''}`}>
+                            Proyección de Ingresos
+                          </span>
+                          <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-medium ${willReachGoal ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'}`}>
+                            {willReachGoal ? '✓ Llegás a la meta' : '✗ No alcanza'}
+                          </span>
+                        </div>
+
+                        {/* Income list */}
+                        <div className="space-y-1.5">
+                          {goal.projectedIncomes.map((pi, i) => {
+                            const isPast = new Date(pi.date) <= new Date();
+                            return (
+                              <div
+                                key={pi.id}
+                                className={`flex items-center gap-2 text-xs rounded-lg px-2 py-1.5 transition-colors ${
+                                  pi.received
+                                    ? 'bg-emerald-50 dark:bg-emerald-950/30 line-through text-muted-foreground'
+                                    : isPast
+                                      ? 'bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800'
+                                      : 'bg-background'
+                                }`}
+                              >
+                                <Checkbox
+                                  checked={pi.received}
+                                  onCheckedChange={() => onToggleProjectedIncome(goal.id, pi.id, pi.description)}
+                                  className={pi.received ? 'border-emerald-500' : ''}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <span className={pi.received ? 'line-through text-muted-foreground' : 'font-medium'}>
+                                    {pi.description}
+                                  </span>
+                                </div>
+                                <span className="text-muted-foreground shrink-0">
+                                  {formatDateShort(pi.date)}
+                                </span>
+                                <span className={`font-bold shrink-0 ${pi.received ? 'text-muted-foreground' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                  {formatCurrency(pi.amount)}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Summary */}
+                        <Separator />
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">Total proyectado (pendiente)</span>
+                            <span className="font-semibold">{formatCurrency(pendingProjected)}</span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">Ahorrado + proyectado</span>
+                            <span className={`font-bold ${willReachGoal ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                              {formatCurrency(projectedWithSavings)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">Meta</span>
+                            <span className="font-semibold">{formatCurrency(goal.targetAmount)}</span>
+                          </div>
+                          {willReachGoal ? (
+                            <div className="flex justify-between text-xs bg-emerald-50 dark:bg-emerald-950/30 rounded-lg px-2 py-1.5 mt-1">
+                              <span className="text-emerald-700 dark:text-emerald-300 font-medium">Sobrante estimado</span>
+                              <span className="text-emerald-700 dark:text-emerald-300 font-bold">{formatCurrency(surplus)}</span>
+                            </div>
+                          ) : (
+                            <div className="flex justify-between text-xs bg-amber-50 dark:bg-amber-950/30 rounded-lg px-2 py-1.5 mt-1">
+                              <span className="text-amber-700 dark:text-amber-300 font-medium">Faltaría</span>
+                              <span className="text-amber-700 dark:text-amber-300 font-bold">{formatCurrency(-surplus)}</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     );
                   })()}

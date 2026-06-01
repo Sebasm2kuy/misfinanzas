@@ -48,6 +48,14 @@ export interface GoalItem {
   notes: string | null;
 }
 
+export interface ProjectedIncome {
+  id: string;
+  date: string;
+  amount: number;
+  description: string;
+  received: boolean;
+}
+
 export interface Goal {
   id: string;
   name: string;
@@ -59,6 +67,7 @@ export interface Goal {
   createdAt: string;
   updatedAt: string;
   items: GoalItem[];
+  projectedIncomes: ProjectedIncome[];
 }
 
 export interface AccountStats {
