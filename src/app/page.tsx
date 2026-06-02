@@ -44,6 +44,9 @@ import {
   Clock,
   CheckCircle2,
   SquarePen,
+  Receipt,
+  UtensilsCrossed,
+  Bus,
 } from 'lucide-react';
 import {
   BarChart,
@@ -3670,6 +3673,7 @@ function PlanTab({ goals, onAddSavings, onToggleItem, onEditItemCost, onDeleteIt
   onReload: () => void;
 }) {
   const [pis, setPis] = useState<Array<{id:string;date:string;amount:number;description:string;received:boolean}>>([]);
+  const [tes, setTes] = useState<Array<{id:string;name:string;amount:number;isDaily:boolean;dailyAmount:number}>>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [ni, setNi] = useState({ description: '', amount: '', date: '' });
   const [calOpen, setCalOpen] = useState(false);
@@ -3677,8 +3681,33 @@ function PlanTab({ goals, onAddSavings, onToggleItem, onEditItemCost, onDeleteIt
   const [editData, setEditData] = useState({ description: '', amount: '', date: '' });
   const [editCalOpen, setEditCalOpen] = useState(false);
 
-  const load = useCallback(() => setPis(api.getStableProjectedIncomes()), []);
+  const load = useCallback(() => { setPis(api.getStableProjectedIncomes()); setTes(api.getTheoExpenses()); }, []);
   useEffect(() => { load(); }, [load]);
+
+  const saveTe = async (id: string, field: string, value: string | number) => {
+    const current = tes.find(e => e.id === id);
+    if (!current) return;
+    if (field === 'amount') {
+      const newAmount = typeof value === 'string' ? parseFloat(value) || 0 : value;
+      const newMonthly = current.isDaily ? newAmount * 26 : newAmount;
+      api.updateTheoExpense(id, { amount: newMonthly, dailyAmount: newAmount });
+    } else {
+      api.updateTheoExpense(id, { [field]: value });
+    }
+    load();
+  };
+
+  const delTe = async (id: string) => {
+    api.deleteTheoExpense(id);
+    load();
+    toast.success('Gasto teórico eliminado');
+  };
+
+  const addTe = async () => {
+    api.addTheoExpense({ name: 'Nuevo gasto', amount: 0, isDaily: false, dailyAmount: 0 });
+    load();
+    toast.success('Gasto agregado - editá el nombre y monto');
+  };
 
   const addInc = async () => {
     if (!ni.description||!ni.amount||!ni.date) { toast.error('Completa todos los campos'); return; }
@@ -3722,7 +3751,10 @@ function PlanTab({ goals, onAddSavings, onToggleItem, onEditItemCost, onDeleteIt
         const penP = totP - recP;
         const teorico = goal.savedAmount + penP;
         const costo = goal.items.reduce((s,i)=>s+i.estimatedCost,0);
-        const diff = teorico - costo;
+        const gastoMensual = tes.reduce((s,e)=>s+e.amount,0);
+        const gastoTotalTheo = gastoMensual * ml;
+        const disponible = teorico - gastoTotalTheo;
+        const diff = disponible - costo;
 
         const togRec = async (id:string) => { api.toggleStableProjectedIncome(id); load(); await onReload(); };
         const delInc = async (id:string) => { api.deleteStableProjectedIncome(id); load(); await onReload(); };

@@ -410,6 +410,77 @@ export const toggleProjectedIncome = (goalId: string, incomeId: string): { succe
   return { success: true };
 };
 
+// ─── Theoretical Monthly Expenses (separate key, not synced) ──────
+const THEO_EXP_KEY = 'mf_theoretical_expenses';
+
+export interface TheoExpense {
+  id: string;
+  name: string;
+  amount: number;        // monthly total
+  isDaily: boolean;      // true = amount is per day (weekdays)
+  dailyAmount: number;   // per-day value (if isDaily)
+  daysPerMonth: number;  // weekdays per month (default 26)
+}
+
+const DEFAULT_TEO_EXPENSES: TheoExpense[] = [
+  { id: 'te-1', name: 'Alimentación',      amount: 10400, isDaily: true,  dailyAmount: 400,  daysPerMonth: 26 },
+  { id: 'te-2', name: 'Transporte',        amount: 2704,  isDaily: true,  dailyAmount: 104,  daysPerMonth: 26 },
+  { id: 'te-3', name: 'UTE',               amount: 1500,  isDaily: false, dailyAmount: 0,    daysPerMonth: 0 },
+  { id: 'te-4', name: 'ANTEL Internet',    amount: 690,   isDaily: false, dailyAmount: 0,    daysPerMonth: 0 },
+  { id: 'te-5', name: 'Movistar Internet', amount: 230,  isDaily: false, dailyAmount: 0,    daysPerMonth: 0 },
+  { id: 'te-6', name: 'ANTEL Línea',       amount: 90,   isDaily: false, dailyAmount: 0,    daysPerMonth: 0 },
+  { id: 'te-7', name: 'Gurisas',           amount: 5000,  isDaily: false, dailyAmount: 0,    daysPerMonth: 0 },
+];
+
+export const getTheoExpenses = (): TheoExpense[] => {
+  try {
+    const raw = localStorage.getItem(THEO_EXP_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  localStorage.setItem(THEO_EXP_KEY, JSON.stringify(DEFAULT_TEO_EXPENSES));
+  return DEFAULT_TEO_EXPENSES;
+};
+
+export const getTotalTheoExpensesMonthly = (): number => {
+  return getTheoExpenses().reduce((s, e) => s + e.amount, 0);
+};
+
+export const addTheoExpense = (data: { name: string; amount: number; isDaily: boolean; dailyAmount: number }): TheoExpense => {
+  const expenses = getTheoExpenses();
+  const item: TheoExpense = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 9),
+    name: data.name,
+    amount: data.amount,
+    isDaily: data.isDaily,
+    dailyAmount: data.dailyAmount || 0,
+    daysPerMonth: 26,
+  };
+  expenses.push(item);
+  localStorage.setItem(THEO_EXP_KEY, JSON.stringify(expenses));
+  return item;
+};
+
+export const updateTheoExpense = (id: string, data: { name?: string; amount?: number; isDaily?: boolean; dailyAmount?: number }): { success: boolean } => {
+  const expenses = getTheoExpenses();
+  const idx = expenses.findIndex(e => e.id === id);
+  if (idx === -1) return { success: false };
+  if (data.name !== undefined) expenses[idx].name = data.name;
+  if (data.amount !== undefined) expenses[idx].amount = data.amount;
+  if (data.isDaily !== undefined) expenses[idx].isDaily = data.isDaily;
+  if (data.dailyAmount !== undefined) expenses[idx].dailyAmount = data.dailyAmount;
+  localStorage.setItem(THEO_EXP_KEY, JSON.stringify(expenses));
+  return { success: true };
+};
+
+export const deleteTheoExpense = (id: string): { success: boolean } => {
+  const expenses = getTheoExpenses().filter(e => e.id !== id);
+  localStorage.setItem(THEO_EXP_KEY, JSON.stringify(expenses));
+  return { success: true };
+};
+
 // ─── Accounts ──────────────────────────────────────────────
 const ACCOUNTS_KEY = 'mf_accounts';
 
