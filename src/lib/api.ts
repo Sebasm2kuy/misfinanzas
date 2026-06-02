@@ -422,13 +422,24 @@ export interface TheoExpense {
   excludeSundays: boolean;   // true = don't count Sundays (only for daily)
 }
 
+export interface MonthTheoItem {
+  name: string;
+  isDaily: boolean;
+  dailyAmount: number;
+  excludeSundays: boolean;
+  days: number;          // actual days used for this item in this month
+  subtotal: number;      // dailyAmount * days or fixed amount
+}
+
 export interface MonthTheoBreakdown {
-  monthLabel: string;        // "Jun 2026"
-  totalDays: number;         // all days in month
-  weekdayDays: number;       // days excluding Sundays
-  dailyTotal: number;        // sum of daily expenses for this month
-  fixedTotal: number;        // sum of fixed expenses for this month
-  monthTotal: number;        // dailyTotal + fixedTotal
+  monthLabel: string;
+  totalDays: number;
+  weekdayDays: number;
+  sundays: number;
+  dailyTotal: number;
+  fixedTotal: number;
+  monthTotal: number;
+  items: MonthTheoItem[];
 }
 
 const DEFAULT_TEO_EXPENSES: TheoExpense[] = [
@@ -459,12 +470,16 @@ export const getMonthTheoBreakdown = (expenses: TheoExpense[], months: Array<{ye
 
     let dailyTotal = 0;
     let fixedTotal = 0;
+    const items: MonthTheoItem[] = [];
     expenses.forEach(e => {
       if (e.isDaily) {
         const days = e.excludeSundays ? weekdayDays : daysInMonth;
-        dailyTotal += e.dailyAmount * days;
+        const subtotal = e.dailyAmount * days;
+        dailyTotal += subtotal;
+        items.push({ name: e.name, isDaily: true, dailyAmount: e.dailyAmount, excludeSundays: e.excludeSundays, days, subtotal });
       } else {
         fixedTotal += e.amount;
+        items.push({ name: e.name, isDaily: false, dailyAmount: 0, excludeSundays: false, days: 0, subtotal: e.amount });
       }
     });
 
@@ -472,9 +487,11 @@ export const getMonthTheoBreakdown = (expenses: TheoExpense[], months: Array<{ye
       monthLabel: `${monthNames[month]} ${year}`,
       totalDays: daysInMonth,
       weekdayDays,
+      sundays,
       dailyTotal,
       fixedTotal,
       monthTotal: dailyTotal + fixedTotal,
+      items,
     };
   });
 };

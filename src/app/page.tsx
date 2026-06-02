@@ -3881,20 +3881,38 @@ function PlanTab({ goals, onAddSavings, onToggleItem, onEditItemCost, onDeleteIt
                 </div>
                 <Button size="sm" variant="outline" className="w-full h-8 text-xs gap-1 border-orange-300 text-orange-600 hover:bg-orange-100 dark:border-orange-700" onClick={addTe}><Plus className="h-3 w-3" /> Agregar gasto</Button>
                 <Separator />
-                {/* Per-month breakdown with real days */}
-                <div className="space-y-1.5">
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Desglose por mes</p>
+                {/* Per-month detailed breakdown */}
+                <div className="space-y-3">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Desglose mes a mes</p>
                   {breakdown.map(bm => (
-                    <div key={bm.monthLabel} className="flex items-center justify-between text-xs px-2 py-1.5 rounded-md bg-muted/50">
-                      <span className="font-medium">{bm.monthLabel}</span>
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <span className="text-[9px]">{bm.totalDays}d / {bm.weekdayDays}háb</span>
-                        <span className="font-bold text-orange-600">{formatCurrency(bm.monthTotal)}</span>
+                    <div key={bm.monthLabel} className="rounded-lg border border-orange-100 dark:border-orange-900/50 overflow-hidden">
+                      <div className="flex items-center justify-between px-2.5 py-2 bg-orange-50 dark:bg-orange-950/30">
+                        <span className="text-xs font-bold">{bm.monthLabel}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] text-muted-foreground">{bm.totalDays} días / {bm.sundays} dom / {bm.weekdayDays} háb</span>
+                          <span className="text-xs font-bold text-orange-600">{formatCurrency(bm.monthTotal)}</span>
+                        </div>
+                      </div>
+                      <div className="divide-y divide-orange-50 dark:divide-orange-950/20">
+                        {bm.items.map((item, i) => (
+                          <div key={i} className="flex items-center justify-between px-2.5 py-1.5 text-xs">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className={`shrink-0 w-1.5 h-1.5 rounded-full ${item.isDaily ? 'bg-orange-400' : 'bg-orange-200'}`} />
+                              <span className="text-muted-foreground truncate">{item.name}</span>
+                              {item.isDaily && (
+                                <span className="text-[9px] text-muted-foreground shrink-0">
+                                  ${item.dailyAmount} x {item.days}{item.excludeSundays ? ' háb' : 'd'}
+                                </span>
+                              )}
+                            </div>
+                            <span className="font-semibold shrink-0 ml-2">{formatCurrency(item.subtotal)}</span>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   ))}
-                  <div className="flex justify-between text-xs font-bold pt-1 border-t">
-                    <span>Total gastos teóricos</span>
+                  <div className="flex justify-between text-xs font-bold pt-2 border-t">
+                    <span>Total gastos teóricos ({breakdown.length} meses)</span>
                     <span className="text-orange-600">{formatCurrency(gastoTotalTheo)}</span>
                   </div>
                 </div>
