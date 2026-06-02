@@ -3,7 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 
-const APP_CACHE_VERSION = 'v4.0-plan-deploy';
+const APP_CACHE_VERSION = 'v4.1-fix-scope-regex';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -60,7 +60,7 @@ export default function RootLayout({
                 var prev = localStorage.getItem('mf_cache_version');
                 if (prev !== '${APP_CACHE_VERSION}') {
                   localStorage.setItem('mf_cache_version', '${APP_CACHE_VERSION}');
-                  var pathname = window.location.pathname.replace(/\?_cb=.*$/, '');
+                  var pathname = window.location.pathname.replace(/[?&]_cb=.*$/, '');
                   window.location.replace(pathname + '?_cb=' + Date.now());
                 }
               } catch(e) {}

@@ -3675,6 +3675,12 @@ function PlanTab({ goals, onAddSavings, onToggleItem, onEditItemCost, onDeleteIt
   const load = useCallback(() => setPis(api.getStableProjectedIncomes()), []);
   useEffect(() => { load(); }, [load]);
 
+  const addInc = async () => {
+    if (!ni.description||!ni.amount||!ni.date) { toast.error('Completa todos los campos'); return; }
+    api.addStableProjectedIncome({ description: ni.description, amount: parseFloat(ni.amount), date: new Date(ni.date).toISOString() });
+    setNi({description:'',amount:'',date:''}); setShowAdd(false); load(); await onReload(); toast.success('Ingreso agregado al plan');
+  };
+
   const gwp = goals.filter(g => g.deadline && g.savedAmount < g.targetAmount);
   if (!gwp.length) return (
     <Card><CardContent className="py-12 text-center"><PiggyBank className="h-12 w-12 text-muted-foreground mx-auto mb-3" /><p className="text-muted-foreground text-sm">No hay metas activas con plan de ahorro</p></CardContent></Card>
@@ -3699,11 +3705,7 @@ function PlanTab({ goals, onAddSavings, onToggleItem, onEditItemCost, onDeleteIt
 
         const togRec = async (id:string) => { api.toggleStableProjectedIncome(id); load(); await onReload(); };
         const delInc = async (id:string) => { api.deleteStableProjectedIncome(id); load(); await onReload(); };
-        const addInc = async () => {
-          if (!ni.description||!ni.amount||!ni.date) { toast.error('Completa todos los campos'); return; }
-          api.addStableProjectedIncome({ description: ni.description, amount: parseFloat(ni.amount), date: new Date(ni.date).toISOString() });
-          setNi({description:'',amount:'',date:''}); setShowAdd(false); load(); await onReload(); toast.success('Ingreso agregado al plan');
-        };
+
 
         return (
           <motion.div key={goal.id} initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{delay:idx*0.1}} className="space-y-3">
