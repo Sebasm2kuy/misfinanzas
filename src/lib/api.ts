@@ -423,15 +423,18 @@ export interface TheoExpense {
 }
 
 export interface MonthTheoItem {
+  expenseId: string;
   name: string;
   isDaily: boolean;
   dailyAmount: number;
   excludeSundays: boolean;
-  days: number;          // actual days used for this item in this month
-  subtotal: number;      // dailyAmount * days or fixed amount
+  days: number;
+  subtotal: number;
+  isOverride: boolean;     // true if this month has a custom value
 }
 
 export interface MonthTheoBreakdown {
+  monthKey: string;        // "2026-6"
   monthLabel: string;
   totalDays: number;
   weekdayDays: number;
@@ -462,28 +465,45 @@ const countSundays = (year: number, month: number): number => {
 };
 
 export const getMonthTheoBreakdown = (expenses: TheoExpense[], months: Array<{year: number; month: number}>): MonthTheoBreakdown[] => {
+  const overrides = getTheoOverrides();
   return months.map(({ year, month }) => {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const sundays = countSundays(year, month);
     const weekdayDays = daysInMonth - sundays;
     const monthNames = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    const monthKey = `${year}-${month}`;
 
     let dailyTotal = 0;
     let fixedTotal = 0;
     const items: MonthTheoItem[] = [];
     expenses.forEach(e => {
-      if (e.isDaily) {
+      const monthOverrides = overrides[monthKey] || {};
+      const hasOverride = monthOverrides[e.id] !== undefined;
+      const effective = hasOverride ? monthOverrides[e.id] : (e.isDaily ? e.dailyAmount : e.amount);
+
+      if (e.isDaily && !hasOverride) {
+        // Daily with no override: calculate from daily rate x days
         const days = e.excludeSundays ? weekdayDays : daysInMonth;
         const subtotal = e.dailyAmount * days;
         dailyTotal += subtotal;
-        items.push({ name: e.name, isDaily: true, dailyAmount: e.dailyAmount, excludeSundays: e.excludeSundays, days, subtotal });
+        items.push({ expenseId: e.id, name: e.name, isDaily: true, dailyAmount: e.dailyAmount, excludeSundays: e.excludeSundays, days, subtotal, isOverride: false });
+      } else if (e.isDaily && hasOverride) {
+        // Daily with override: the override IS the monthly total
+        dailyTotal += effective;
+        items.push({ expenseId: e.id, name: e.name, isDaily: true, dailyAmount: e.dailyAmount, excludeSundays: e.excludeSundays, days: 0, subtotal: effective, isOverride: true });
+      } else if (hasOverride) {
+        // Fixed with override
+        fixedTotal += effective;
+        items.push({ expenseId: e.id, name: e.name, isDaily: false, dailyAmount: 0, excludeSundays: false, days: 0, subtotal: effective, isOverride: true });
       } else {
+        // Fixed no override
         fixedTotal += e.amount;
-        items.push({ name: e.name, isDaily: false, dailyAmount: 0, excludeSundays: false, days: 0, subtotal: e.amount });
+        items.push({ expenseId: e.id, name: e.name, isDaily: false, dailyAmount: 0, excludeSundays: false, days: 0, subtotal: e.amount, isOverride: false });
       }
     });
 
     return {
+      monthKey,
       monthLabel: `${monthNames[month]} ${year}`,
       totalDays: daysInMonth,
       weekdayDays,
@@ -553,7 +573,48 @@ export const updateTheoExpense = (id: string, data: { name?: string; amount?: nu
 export const deleteTheoExpense = (id: string): { success: boolean } => {
   const expenses = getTheoExpenses().filter(e => e.id !== id);
   localStorage.setItem(THEO_EXP_KEY, JSON.stringify(expenses));
+  // Also clean up overrides for deleted expense
+  const overrides = getTheoOverrides();
+  Object.keys(overrides).forEach(mk => { delete overrides[mk][id]; if (!Object.keys(overrides[mk]).length) delete overrides[mk]; });
+  localStorage.setItem(THEO_OVERRIDES_KEY, JSON.stringify(overrides));
   return { success: true };
+};
+
+// ─── Per-Month Overrides for Theo Expenses ──────────────────────
+const THEO_OVERRIDES_KEY = 'mf_theo_exp_overrides';
+// Structure: { "2026-6": { "te-3": 3000, "te-7": 4000 }, "2026-7": { "te-3": 5000 } }
+
+export const getTheoOverrides = (): Record<string, Record<string, number>> => {
+  try {
+    const raw = localStorage.getItem(THEO_OVERRIDES_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return {};
+};
+
+export const setTheoOverride = (monthKey: string, expenseId: string, amount: number): void => {
+  const overrides = getTheoOverrides();
+  if (!overrides[monthKey]) overrides[monthKey] = {};
+  overrides[monthKey][expenseId] = amount;
+  localStorage.setItem(THEO_OVERRIDES_KEY, JSON.stringify(overrides));
+};
+
+export const removeTheoOverride = (monthKey: string, expenseId: string): void => {
+  const overrides = getTheoOverrides();
+  if (overrides[monthKey]) {
+    delete overrides[monthKey][expenseId];
+    if (!Object.keys(overrides[monthKey]).length) delete overrides[monthKey];
+  }
+  localStorage.setItem(THEO_OVERRIDES_KEY, JSON.stringify(overrides));
+};
+
+export const getEffectiveTheoAmount = (expense: TheoExpense, monthKey: string): { amount: number; isOverride: boolean } => {
+  const overrides = getTheoOverrides();
+  if (overrides[monthKey] && overrides[monthKey][expense.id] !== undefined) {
+    return { amount: overrides[monthKey][expense.id], isOverride: true };
+  }
+  // Default: for daily expenses, calculate from dailyAmount; for fixed, use amount
+  return { amount: expense.isDaily ? expense.dailyAmount : expense.amount, isOverride: false };
 };
 
 // ─── Accounts ──────────────────────────────────────────────

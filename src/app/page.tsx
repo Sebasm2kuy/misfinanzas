@@ -3689,11 +3689,30 @@ function PlanTab({ goals, onAddSavings, onToggleItem, onEditItemCost, onDeleteIt
     if (!current) return;
     if (field === 'amount') {
       const newAmount = typeof value === 'string' ? parseFloat(value) || 0 : value;
-      const newMonthly = current.isDaily ? newAmount * 26 : newAmount;
-      api.updateTheoExpense(id, { amount: newMonthly, dailyAmount: newAmount });
+      if (current.isDaily) {
+        api.updateTheoExpense(id, { dailyAmount: newAmount });
+      } else {
+        api.updateTheoExpense(id, { amount: newAmount });
+      }
     } else {
       api.updateTheoExpense(id, { [field]: value });
     }
+    load();
+  };
+
+  // Save per-month override for an expense
+  const saveMonthOverride = (monthKey: string, expenseId: string, value: string) => {
+    const amount = parseFloat(value) || 0;
+    if (amount === 0) {
+      api.removeTheoOverride(monthKey, expenseId);
+    } else {
+      api.setTheoOverride(monthKey, expenseId, amount);
+    }
+    load();
+  };
+
+  const resetMonthOverride = (monthKey: string, expenseId: string) => {
+    api.removeTheoOverride(monthKey, expenseId);
     load();
   };
 
@@ -3881,31 +3900,40 @@ function PlanTab({ goals, onAddSavings, onToggleItem, onEditItemCost, onDeleteIt
                 </div>
                 <Button size="sm" variant="outline" className="w-full h-8 text-xs gap-1 border-orange-300 text-orange-600 hover:bg-orange-100 dark:border-orange-700" onClick={addTe}><Plus className="h-3 w-3" /> Agregar gasto</Button>
                 <Separator />
-                {/* Per-month detailed breakdown */}
+                {/* Per-month detailed breakdown with editable overrides */}
                 <div className="space-y-3">
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Desglose mes a mes</p>
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Desglose mes a mes <span className="normal-case font-normal">(clic en monto para editar por mes)</span></p>
                   {breakdown.map(bm => (
-                    <div key={bm.monthLabel} className="rounded-lg border border-orange-100 dark:border-orange-900/50 overflow-hidden">
+                    <div key={bm.monthKey} className="rounded-lg border border-orange-100 dark:border-orange-900/50 overflow-hidden">
                       <div className="flex items-center justify-between px-2.5 py-2 bg-orange-50 dark:bg-orange-950/30">
                         <span className="text-xs font-bold">{bm.monthLabel}</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-[9px] text-muted-foreground">{bm.totalDays} días / {bm.sundays} dom / {bm.weekdayDays} háb</span>
+                          <span className="text-[9px] text-muted-foreground">{bm.totalDays}d / {bm.sundays}dom / {bm.weekdayDays}háb</span>
                           <span className="text-xs font-bold text-orange-600">{formatCurrency(bm.monthTotal)}</span>
                         </div>
                       </div>
                       <div className="divide-y divide-orange-50 dark:divide-orange-950/20">
-                        {bm.items.map((item, i) => (
-                          <div key={i} className="flex items-center justify-between px-2.5 py-1.5 text-xs">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <span className={`shrink-0 w-1.5 h-1.5 rounded-full ${item.isDaily ? 'bg-orange-400' : 'bg-orange-200'}`} />
-                              <span className="text-muted-foreground truncate">{item.name}</span>
-                              {item.isDaily && (
-                                <span className="text-[9px] text-muted-foreground shrink-0">
-                                  ${item.dailyAmount} x {item.days}{item.excludeSundays ? ' háb' : 'd'}
-                                </span>
-                              )}
-                            </div>
-                            <span className="font-semibold shrink-0 ml-2">{formatCurrency(item.subtotal)}</span>
+                        {bm.items.map((item) => (
+                          <div key={item.expenseId} className={`flex items-center gap-2 px-2.5 py-1.5 text-xs ${item.isOverride ? 'bg-amber-50/50 dark:bg-amber-950/20' : ''}`}>
+                            <span className={`shrink-0 w-1.5 h-1.5 rounded-full ${item.isOverride ? 'bg-amber-500' : item.isDaily ? 'bg-orange-400' : 'bg-orange-200'}`} />
+                            <span className="text-muted-foreground truncate flex-1 min-w-0">{item.name}</span>
+                            {item.isDaily && !item.isOverride && (
+                              <span className="text-[9px] text-muted-foreground shrink-0">${item.dailyAmount} x {item.days}{item.excludeSundays ? ' háb' : 'd'}</span>
+                            )}
+                            {item.isOverride && (
+                              <span className="text-[9px] text-amber-600 shrink-0">personalizado</span>
+                            )}
+                            <Input
+                              type="number"
+                              className={`w-20 h-6 text-xs text-right font-bold bg-transparent border-transparent hover:border-border focus:border-orange-400 px-1 ${item.isOverride ? 'text-amber-600' : ''}`}
+                              value={item.subtotal}
+                              onChange={e => saveMonthOverride(bm.monthKey, item.expenseId, e.target.value)}
+                            />
+                            {item.isOverride && (
+                              <button onClick={() => resetMonthOverride(bm.monthKey, item.expenseId)} className="text-muted-foreground hover:text-primary shrink-0 p-0.5" title="Volver al valor base">
+                                <RotateCcw className="h-3 w-3" />
+                              </button>
+                            )}
                           </div>
                         ))}
                       </div>
