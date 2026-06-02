@@ -137,6 +137,12 @@
 html, body {
   overflow-x: hidden;
   max-width: 100vw;
+  overscroll-behavior: none;
+}
+
+/* Prevent pull-to-refresh on mobile */
+html {
+  overscroll-behavior-y: contain;
 }
 
 /* Smoother scrolling on mobile */

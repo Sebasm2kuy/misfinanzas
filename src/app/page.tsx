@@ -320,6 +320,15 @@ export default function Home() {
     toast.info('Sesion cerrada.');
   };
 
+  // Tab switching with auto-sync
+  const switchTab = useCallback((tab: 'dashboard' | 'transactions' | 'goals' | 'plan') => {
+    setActiveTab(tab);
+    // Auto-sync when switching tabs
+    if (authToken && gistId) {
+      handleForceSync();
+    }
+  }, [authToken, gistId]);
+
   const handleForceSync = async () => {
     if (!authToken || !gistId) return;
     setSyncStatus('syncing');
@@ -381,6 +390,28 @@ export default function Home() {
       }
     })();
   }, [loadAllData]);
+
+  // Sync when app comes back into focus (user switches apps/tabs)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && isLoggedIn && authToken && gistId) {
+        // Pull latest data from Gist then push local changes
+        (async () => {
+          try {
+            const remoteData = await sync.loadFromGist(authToken, gistId);
+            if (remoteData) sync.applyRemoteData(remoteData);
+            await loadAllData();
+            const localData = sync.gatherLocalData();
+            await sync.saveToGist(authToken, gistId, localData);
+            setSyncStatus('synced');
+            toast.success('Datos sincronizados');
+          } catch {}
+        })();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [isLoggedIn, authToken, gistId, loadAllData]);
 
   // ── Transaction CRUD ──
   const handleCreateTx = async () => {
@@ -923,7 +954,7 @@ export default function Home() {
             className={`w-full justify-start gap-3 h-11 px-4 font-medium transition-all ${
               activeTab === item.id ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : ''
             }`}
-            onClick={() => setActiveTab(item.id)}
+            onClick={() => switchTab(item.id)}
           >
             <item.icon className="h-4 w-4" />
             {item.label}
@@ -1112,15 +1143,17 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-1.5">
             {githubUser && (
-              <div className="flex items-center">
+              <button onClick={handleForceSync} className="flex items-center p-1.5 rounded-lg hover:bg-gray-100 transition-colors" title="Forzar sincronización">
                 {syncStatus === 'syncing' ? (
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-amber-500" />
+                  <RefreshCw className="h-4 w-4 animate-spin text-amber-500" />
                 ) : syncStatus === 'synced' ? (
-                  <Cloud className="h-3.5 w-3.5 text-emerald-500" />
+                  <Cloud className="h-4 w-4 text-emerald-500" />
                 ) : syncStatus === 'error' ? (
-                  <CloudOff className="h-3.5 w-3.5 text-red-500" />
-                ) : null}
-              </div>
+                  <CloudOff className="h-4 w-4 text-red-500" />
+                ) : (
+                  <Cloud className="h-4 w-4 text-muted-foreground" />
+                )}
+              </button>
             )}
             <button onClick={() => setShowSettings(true)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
               <SettingsIcon className="h-4.5 w-4.5 text-gray-500" />
@@ -1133,28 +1166,28 @@ export default function Home() {
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-t shadow-[0_-2px_10px_rgba(0,0,0,0.06)] safe-area-bottom">
         <div className="flex items-center justify-around h-14">
           <button
-            onClick={() => setActiveTab('dashboard')}
+            onClick={() => switchTab('dashboard')}
             className={`flex flex-col items-center justify-center gap-0.5 w-full h-full transition-colors ${activeTab === 'dashboard' ? 'text-emerald-600' : 'text-gray-400'}`}
           >
             <BarChart3 className="h-5 w-5" />
             <span className="text-[10px] font-medium">Inicio</span>
           </button>
           <button
-            onClick={() => setActiveTab('transactions')}
+            onClick={() => switchTab('transactions')}
             className={`flex flex-col items-center justify-center gap-0.5 w-full h-full transition-colors ${activeTab === 'transactions' ? 'text-emerald-600' : 'text-gray-400'}`}
           >
             <Activity className="h-5 w-5" />
             <span className="text-[10px] font-medium">Movimientos</span>
           </button>
           <button
-            onClick={() => setActiveTab('plan')}
+            onClick={() => switchTab('plan')}
             className={`flex flex-col items-center justify-center gap-0.5 w-full h-full transition-colors ${activeTab === 'plan' ? 'text-emerald-600' : 'text-gray-400'}`}
           >
             <PiggyBank className="h-5 w-5" />
             <span className="text-[10px] font-medium">Plan</span>
           </button>
           <button
-            onClick={() => setActiveTab('goals')}
+            onClick={() => switchTab('goals')}
             className={`flex flex-col items-center justify-center gap-0.5 w-full h-full transition-colors ${activeTab === 'goals' ? 'text-emerald-600' : 'text-gray-400'}`}
           >
             <Target className="h-5 w-5" />
