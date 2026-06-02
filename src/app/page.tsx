@@ -42,6 +42,8 @@ import {
   RotateCcw,
   Calculator,
   Clock,
+  CheckCircle2,
+  SquarePen,
 } from 'lucide-react';
 import {
   BarChart,
@@ -3671,6 +3673,9 @@ function PlanTab({ goals, onAddSavings, onToggleItem, onEditItemCost, onDeleteIt
   const [showAdd, setShowAdd] = useState(false);
   const [ni, setNi] = useState({ description: '', amount: '', date: '' });
   const [calOpen, setCalOpen] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editData, setEditData] = useState({ description: '', amount: '', date: '' });
+  const [editCalOpen, setEditCalOpen] = useState(false);
 
   const load = useCallback(() => setPis(api.getStableProjectedIncomes()), []);
   useEffect(() => { load(); }, [load]);
@@ -3679,6 +3684,22 @@ function PlanTab({ goals, onAddSavings, onToggleItem, onEditItemCost, onDeleteIt
     if (!ni.description||!ni.amount||!ni.date) { toast.error('Completa todos los campos'); return; }
     api.addStableProjectedIncome({ description: ni.description, amount: parseFloat(ni.amount), date: new Date(ni.date).toISOString() });
     setNi({description:'',amount:'',date:''}); setShowAdd(false); load(); await onReload(); toast.success('Ingreso agregado al plan');
+  };
+
+  const startEdit = (pi: {id:string;description:string;amount:number;date:string}) => {
+    setEditId(pi.id);
+    setEditData({ description: pi.description, amount: String(pi.amount), date: pi.date.split('T')[0] });
+  };
+
+  const saveEdit = async () => {
+    if (!editId||!editData.description||!editData.amount||!editData.date) { toast.error('Completa todos los campos'); return; }
+    api.updateStableProjectedIncome(editId, { description: editData.description, amount: parseFloat(editData.amount), date: new Date(editData.date).toISOString() });
+    setEditId(null); load(); await onReload(); toast.success('Ingreso actualizado');
+  };
+
+  const confirmIncome = async (id: string) => {
+    api.updateStableProjectedIncome(id, { received: true });
+    load(); await onReload(); toast.success('Ingreso confirmado como cobrado');
   };
 
   const gwp = goals.filter(g => g.deadline && g.savedAmount < g.targetAmount);
@@ -3737,13 +3758,40 @@ function PlanTab({ goals, onAddSavings, onToggleItem, onEditItemCost, onDeleteIt
                 <div className="space-y-1.5">
                   {pis.map(pi => {
                     const past = new Date(pi.date) <= new Date();
+                    const isEditing = editId === pi.id;
                     return (
-                      <div key={pi.id} className={`flex items-center gap-2 text-xs sm:text-sm rounded-lg px-2.5 sm:px-3 py-2 transition-colors ${pi.received?'bg-emerald-50 dark:bg-emerald-950/30 text-muted-foreground':past?'bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800':'bg-background'}`}>
-                        <Checkbox checked={pi.received} onCheckedChange={()=>togRec(pi.id)} className={pi.received?'border-emerald-500':''} />
-                        <span className={`flex-1 min-w-0 truncate ${pi.received?'line-through':'font-medium'}`}>{pi.description}</span>
-                        <span className="text-muted-foreground shrink-0">{formatDateShort(pi.date)}</span>
-                        <span className={`font-bold shrink-0 ${pi.received?'text-muted-foreground':'text-emerald-600 dark:text-emerald-400'}`}>{formatCurrency(pi.amount)}</span>
-                        <button onClick={()=>delInc(pi.id)} className="text-muted-foreground hover:text-destructive shrink-0 p-0.5"><Trash2 className="h-3 w-3" /></button>
+                      <div key={pi.id} className={`text-xs sm:text-sm rounded-lg px-2.5 sm:px-3 py-2 transition-colors ${pi.received?'bg-emerald-50 dark:bg-emerald-950/30 text-muted-foreground':past&&!isEditing?'bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800':isEditing?'bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800':'bg-background'}`}>
+                        {isEditing ? (
+                          <div className="space-y-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                              <Input className="h-8 text-xs" placeholder="Descripción" value={editData.description} onChange={e=>setEditData(p=>({...p,description:e.target.value}))} />
+                              <Input type="number" className="h-8 text-xs" placeholder="Monto" value={editData.amount} onChange={e=>setEditData(p=>({...p,amount:e.target.value}))} />
+                              <Popover open={editCalOpen} onOpenChange={setEditCalOpen}>
+                                <PopoverTrigger asChild><Button variant="outline" size="sm" className="h-8 w-full justify-start text-xs font-normal">{editData.date?formatDateShort(editData.date):'Fecha'}</Button></PopoverTrigger>
+                                <PopoverContent className="w-auto p-0" align="start"><CalendarComponent mode="single" selected={editData.date?new Date(editData.date):undefined} onSelect={(d:Date|undefined)=>{if(d)setEditData(p=>({...p,date:d.toISOString().split('T')[0]}));setEditCalOpen(false);}} /></PopoverContent>
+                              </Popover>
+                            </div>
+                            <div className="flex gap-1 justify-end">
+                              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={()=>setEditId(null)}>Cancelar</Button>
+                              <Button size="sm" className="h-7 text-xs gap-1" onClick={saveEdit}><Check className="h-3 w-3" /> Guardar</Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            {pi.received ? (
+                              <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                            ) : (
+                              <button onClick={()=>confirmIncome(pi.id)} className="shrink-0 rounded-md border border-emerald-300 dark:border-emerald-700 bg-emerald-100 dark:bg-emerald-900/30 px-1.5 py-0.5 text-[10px] sm:text-xs font-medium text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-800/40 transition-colors" title="Confirmar cobro">Confirmar</button>
+                            )}
+                            <span className={`flex-1 min-w-0 truncate ${pi.received?'line-through':'font-medium'}`}>{pi.description}</span>
+                            <span className="text-muted-foreground shrink-0">{formatDateShort(pi.date)}</span>
+                            <span className={`font-bold shrink-0 ${pi.received?'text-muted-foreground':'text-emerald-600 dark:text-emerald-400'}`}>{formatCurrency(pi.amount)}</span>
+                            {!pi.received && (
+                              <button onClick={()=>startEdit(pi)} className="text-muted-foreground hover:text-primary shrink-0 p-0.5" title="Editar"><SquarePen className="h-3 w-3" /></button>
+                            )}
+                            <button onClick={()=>delInc(pi.id)} className="text-muted-foreground hover:text-destructive shrink-0 p-0.5" title="Eliminar"><Trash2 className="h-3 w-3" /></button>
+                          </div>
+                        )}
                       </div>
                     );
                   })}

@@ -368,6 +368,18 @@ export const deleteStableProjectedIncome = (incomeId: string): { success: boolea
   return { success: true };
 };
 
+export const updateStableProjectedIncome = (incomeId: string, data: { description?: string; amount?: number; date?: string; received?: boolean }): { success: boolean } => {
+  const incomes = getStableProjectedIncomes();
+  const idx = incomes.findIndex(pi => pi.id === incomeId);
+  if (idx === -1) return { success: false };
+  if (data.description !== undefined) incomes[idx].description = data.description;
+  if (data.amount !== undefined) incomes[idx].amount = data.amount;
+  if (data.date !== undefined) incomes[idx].date = data.date;
+  if (data.received !== undefined) incomes[idx].received = data.received;
+  localStorage.setItem(STABLE_INCOMES_KEY, JSON.stringify(incomes));
+  return { success: true };
+};
+
 export const toggleStableProjectedIncome = (incomeId: string): { success: boolean } => {
   const incomes = getStableProjectedIncomes();
   const idx = incomes.findIndex(pi => pi.id === incomeId);
