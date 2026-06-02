@@ -416,21 +416,79 @@ const THEO_EXP_KEY = 'mf_theoretical_expenses';
 export interface TheoExpense {
   id: string;
   name: string;
-  amount: number;        // monthly total
-  isDaily: boolean;      // true = amount is per day (weekdays)
-  dailyAmount: number;   // per-day value (if isDaily)
-  daysPerMonth: number;  // weekdays per month (default 26)
+  amount: number;           // monthly total (calculated or fixed)
+  isDaily: boolean;         // true = per-day rate
+  dailyAmount: number;      // per-day value
+  excludeSundays: boolean;   // true = don't count Sundays (only for daily)
+}
+
+export interface MonthTheoBreakdown {
+  monthLabel: string;        // "Jun 2026"
+  totalDays: number;         // all days in month
+  weekdayDays: number;       // days excluding Sundays
+  dailyTotal: number;        // sum of daily expenses for this month
+  fixedTotal: number;        // sum of fixed expenses for this month
+  monthTotal: number;        // dailyTotal + fixedTotal
 }
 
 const DEFAULT_TEO_EXPENSES: TheoExpense[] = [
-  { id: 'te-1', name: 'Alimentación',      amount: 10400, isDaily: true,  dailyAmount: 400,  daysPerMonth: 26 },
-  { id: 'te-2', name: 'Transporte',        amount: 2704,  isDaily: true,  dailyAmount: 104,  daysPerMonth: 26 },
-  { id: 'te-3', name: 'UTE',               amount: 1500,  isDaily: false, dailyAmount: 0,    daysPerMonth: 0 },
-  { id: 'te-4', name: 'ANTEL Internet',    amount: 690,   isDaily: false, dailyAmount: 0,    daysPerMonth: 0 },
-  { id: 'te-5', name: 'Movistar Internet', amount: 230,  isDaily: false, dailyAmount: 0,    daysPerMonth: 0 },
-  { id: 'te-6', name: 'ANTEL Línea',       amount: 90,   isDaily: false, dailyAmount: 0,    daysPerMonth: 0 },
-  { id: 'te-7', name: 'Gurisas',           amount: 5000,  isDaily: false, dailyAmount: 0,    daysPerMonth: 0 },
+  { id: 'te-1', name: 'Alimentación',      amount: 0, isDaily: true,  dailyAmount: 400,  excludeSundays: false },
+  { id: 'te-2', name: 'Transporte',        amount: 0, isDaily: true,  dailyAmount: 104,  excludeSundays: true },
+  { id: 'te-3', name: 'UTE',               amount: 1500, isDaily: false, dailyAmount: 0,  excludeSundays: false },
+  { id: 'te-4', name: 'ANTEL Internet',    amount: 690,  isDaily: false, dailyAmount: 0,  excludeSundays: false },
+  { id: 'te-5', name: 'Movistar Internet', amount: 230,  isDaily: false, dailyAmount: 0,  excludeSundays: false },
+  { id: 'te-6', name: 'ANTEL Línea',       amount: 90,   isDaily: false, dailyAmount: 0,  excludeSundays: false },
+  { id: 'te-7', name: 'Gurisas',           amount: 5000, isDaily: false, dailyAmount: 0,  excludeSundays: false },
 ];
+
+const countSundays = (year: number, month: number): number => {
+  let count = 0;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  for (let d = 1; d <= daysInMonth; d++) {
+    if (new Date(year, month, d).getDay() === 0) count++;
+  }
+  return count;
+};
+
+export const getMonthTheoBreakdown = (expenses: TheoExpense[], months: Array<{year: number; month: number}>): MonthTheoBreakdown[] => {
+  return months.map(({ year, month }) => {
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const sundays = countSundays(year, month);
+    const weekdayDays = daysInMonth - sundays;
+    const monthNames = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+    let dailyTotal = 0;
+    let fixedTotal = 0;
+    expenses.forEach(e => {
+      if (e.isDaily) {
+        const days = e.excludeSundays ? weekdayDays : daysInMonth;
+        dailyTotal += e.dailyAmount * days;
+      } else {
+        fixedTotal += e.amount;
+      }
+    });
+
+    return {
+      monthLabel: `${monthNames[month]} ${year}`,
+      totalDays: daysInMonth,
+      weekdayDays,
+      dailyTotal,
+      fixedTotal,
+      monthTotal: dailyTotal + fixedTotal,
+    };
+  });
+};
+
+export const getTotalTheoExpensesForPeriod = (expenses: TheoExpense[], startDate: Date, endDate: Date): number => {
+  const months: Array<{year: number; month: number}> = [];
+  const cursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+  while (cursor <= end) {
+    months.push({ year: cursor.getFullYear(), month: cursor.getMonth() });
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return getMonthTheoBreakdown(expenses, months).reduce((s, m) => s + m.monthTotal, 0);
+};
 
 export const getTheoExpenses = (): TheoExpense[] => {
   try {
@@ -448,7 +506,7 @@ export const getTotalTheoExpensesMonthly = (): number => {
   return getTheoExpenses().reduce((s, e) => s + e.amount, 0);
 };
 
-export const addTheoExpense = (data: { name: string; amount: number; isDaily: boolean; dailyAmount: number }): TheoExpense => {
+export const addTheoExpense = (data: { name: string; amount: number; isDaily: boolean; dailyAmount: number; excludeSundays: boolean }): TheoExpense => {
   const expenses = getTheoExpenses();
   const item: TheoExpense = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 9),
@@ -456,7 +514,7 @@ export const addTheoExpense = (data: { name: string; amount: number; isDaily: bo
     amount: data.amount,
     isDaily: data.isDaily,
     dailyAmount: data.dailyAmount || 0,
-    daysPerMonth: 26,
+    excludeSundays: data.excludeSundays || false,
   };
   expenses.push(item);
   localStorage.setItem(THEO_EXP_KEY, JSON.stringify(expenses));

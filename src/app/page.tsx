@@ -3673,7 +3673,7 @@ function PlanTab({ goals, onAddSavings, onToggleItem, onEditItemCost, onDeleteIt
   onReload: () => void;
 }) {
   const [pis, setPis] = useState<Array<{id:string;date:string;amount:number;description:string;received:boolean}>>([]);
-  const [tes, setTes] = useState<Array<{id:string;name:string;amount:number;isDaily:boolean;dailyAmount:number}>>([]);
+  const [tes, setTes] = useState<Array<{id:string;name:string;amount:number;isDaily:boolean;dailyAmount:number;excludeSundays:boolean}>>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [ni, setNi] = useState({ description: '', amount: '', date: '' });
   const [calOpen, setCalOpen] = useState(false);
@@ -3704,7 +3704,7 @@ function PlanTab({ goals, onAddSavings, onToggleItem, onEditItemCost, onDeleteIt
   };
 
   const addTe = async () => {
-    api.addTheoExpense({ name: 'Nuevo gasto', amount: 0, isDaily: false, dailyAmount: 0 });
+    api.addTheoExpense({ name: 'Nuevo gasto', amount: 0, isDaily: false, dailyAmount: 0, excludeSundays: false });
     load();
     toast.success('Gasto agregado - editá el nombre y monto');
   };
@@ -3751,8 +3751,18 @@ function PlanTab({ goals, onAddSavings, onToggleItem, onEditItemCost, onDeleteIt
         const penP = totP - recP;
         const teorico = goal.savedAmount + penP;
         const costo = goal.items.reduce((s,i)=>s+i.estimatedCost,0);
-        const gastoMensual = tes.reduce((s,e)=>s+e.amount,0);
-        const gastoTotalTheo = gastoMensual * ml;
+
+        // Calculate theoretical expenses with real days per month
+        const monthsList: Array<{year:number;month:number}> = [];
+        const startM = new Date();
+        const endM = new Date(dl.getFullYear(), dl.getMonth(), 1);
+        const cursor = new Date(startM.getFullYear(), startM.getMonth(), 1);
+        while (cursor <= endM) {
+          monthsList.push({year:cursor.getFullYear(), month:cursor.getMonth()});
+          cursor.setMonth(cursor.getMonth()+1);
+        }
+        const breakdown = api.getMonthTheoBreakdown(tes, monthsList);
+        const gastoTotalTheo = breakdown.reduce((s,m)=>s+m.monthTotal, 0);
         const disponible = teorico - gastoTotalTheo;
         const diff = disponible - costo;
 
@@ -3834,7 +3844,7 @@ function PlanTab({ goals, onAddSavings, onToggleItem, onEditItemCost, onDeleteIt
                   <div className="flex justify-between"><span className="text-muted-foreground">Dinero real ahorrado</span><span className="font-semibold">{formatCurrency(goal.savedAmount)}</span></div>
                   <div className="flex justify-between font-bold"><span>Total teórico (real + pendiente)</span><span className={teorico>=0?'text-emerald-600':'text-amber-600'}>{formatCurrency(teorico)}</span></div>
                   <Separator />
-                  <div className="flex justify-between"><span className="text-muted-foreground">Gastos teóricos ({ml} meses)</span><span className="font-semibold text-orange-600">- {formatCurrency(gastoTotalTheo)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Gastos teóricos ({breakdown.length} meses)</span><span className="font-semibold text-orange-600">- {formatCurrency(gastoTotalTheo)}</span></div>
                   <div className="flex justify-between font-bold"><span>Disponible para fiesta</span><span className={disponible>=0?'text-emerald-600':'text-rose-600'}>{formatCurrency(disponible)}</span></div>
                   <div className="flex justify-between"><span className="text-muted-foreground">Costo total de la fiesta</span><span className="font-semibold">{formatCurrency(costo)}</span></div>
                   <div className={`flex justify-between rounded-lg px-3 py-2.5 mt-1 ${diff>=0?'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300':'bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300'}`}>
@@ -3848,14 +3858,14 @@ function PlanTab({ goals, onAddSavings, onToggleItem, onEditItemCost, onDeleteIt
             <Card className="overflow-hidden border-orange-200 dark:border-orange-800">
               <CardContent className="p-3 sm:p-5 space-y-3">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2"><Receipt className="h-4 w-4 text-orange-600" /><span className="text-xs sm:text-sm font-semibold">Gastos Teóricos Mensuales</span></div>
-                  <span className="text-xs font-bold text-orange-600">{formatCurrency(gastoMensual)}/mes</span>
+                  <div className="flex items-center gap-2"><Receipt className="h-4 w-4 text-orange-600" /><span className="text-xs sm:text-sm font-semibold">Gastos Teóricos</span></div>
+                  <span className="text-xs font-bold text-orange-600">{formatCurrency(gastoTotalTheo)} total</span>
                 </div>
                 <div className="space-y-1.5">
                   {tes.map(te => (
                     <div key={te.id} className="flex items-center gap-2 text-xs sm:text-sm rounded-lg px-2.5 sm:px-3 py-2 bg-orange-50/50 dark:bg-orange-950/20 border border-orange-100 dark:border-orange-900/50">
                       {te.isDaily ? (
-                        <div className="w-5 h-5 rounded bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center shrink-0"><span className="text-[9px] font-bold text-orange-600">{te.dailyAmount}</span></div>
+                        <div className="w-5 h-5 rounded bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center shrink-0"><span className="text-[9px] font-bold text-orange-600">${te.dailyAmount}</span></div>
                       ) : (
                         <Receipt className="h-4 w-4 text-orange-400 shrink-0" />
                       )}
@@ -3863,7 +3873,7 @@ function PlanTab({ goals, onAddSavings, onToggleItem, onEditItemCost, onDeleteIt
                       <div className="flex items-center gap-1 shrink-0">
                         {te.isDaily && <span className="text-[9px] text-muted-foreground">$</span>}
                         <Input type="number" className="w-20 h-7 text-xs text-right font-bold bg-transparent border-transparent hover:border-border focus:border-orange-400 px-1" value={te.isDaily ? te.dailyAmount : te.amount} onChange={e=>saveTe(te.id,'amount',e.target.value)} />
-                        {te.isDaily && <span className="text-[9px] text-muted-foreground">x26</span>}
+                        {te.isDaily && <span className="text-[9px] text-muted-foreground">{te.excludeSundays ? '/día sin dom' : '/día'}</span>}
                       </div>
                       <button onClick={()=>delTe(te.id)} className="text-muted-foreground hover:text-destructive shrink-0 p-0.5"><Trash2 className="h-3 w-3" /></button>
                     </div>
@@ -3871,13 +3881,26 @@ function PlanTab({ goals, onAddSavings, onToggleItem, onEditItemCost, onDeleteIt
                 </div>
                 <Button size="sm" variant="outline" className="w-full h-8 text-xs gap-1 border-orange-300 text-orange-600 hover:bg-orange-100 dark:border-orange-700" onClick={addTe}><Plus className="h-3 w-3" /> Agregar gasto</Button>
                 <Separator />
-                <div className="space-y-2 text-xs sm:text-sm">
-                  <div className="flex justify-between"><span className="text-muted-foreground">Total gastos/mes</span><span className="font-semibold text-orange-600">{formatCurrency(gastoMensual)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Gastos en {ml} meses</span><span className="font-semibold text-orange-600">{formatCurrency(gastoTotalTheo)}</span></div>
-                  <div className={`flex justify-between rounded-lg px-3 py-2.5 ${disponible>=0?'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300':'bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300'}`}>
-                    <span className="font-semibold">Disponible para fiesta</span>
-                    <span className="font-bold text-sm">{disponible>=0?'':''}{formatCurrency(disponible)}</span>
+                {/* Per-month breakdown with real days */}
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Desglose por mes</p>
+                  {breakdown.map(bm => (
+                    <div key={bm.monthLabel} className="flex items-center justify-between text-xs px-2 py-1.5 rounded-md bg-muted/50">
+                      <span className="font-medium">{bm.monthLabel}</span>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <span className="text-[9px]">{bm.totalDays}d / {bm.weekdayDays}háb</span>
+                        <span className="font-bold text-orange-600">{formatCurrency(bm.monthTotal)}</span>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex justify-between text-xs font-bold pt-1 border-t">
+                    <span>Total gastos teóricos</span>
+                    <span className="text-orange-600">{formatCurrency(gastoTotalTheo)}</span>
                   </div>
+                </div>
+                <div className={`flex justify-between rounded-lg px-3 py-2.5 ${disponible>=0?'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300':'bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300'}`}>
+                  <span className="font-semibold text-xs sm:text-sm">Disponible para fiesta</span>
+                  <span className="font-bold text-sm">{disponible>=0?'':''}{formatCurrency(disponible)}</span>
                 </div>
               </CardContent>
             </Card>

@@ -3,7 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 
-const APP_CACHE_VERSION = 'v4.3-theo-expenses';
+const APP_CACHE_VERSION = 'v4.4-real-days';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -47,6 +47,21 @@ export default function RootLayout({
                 ];
                 if (!localStorage.getItem(KEY)) {
                   localStorage.setItem(KEY, JSON.stringify(DEFAULTS));
+                }
+              } catch(e) {}
+            })();
+          `
+        }} />
+        {/* Migrate theoretical expenses schema (v4.3 -> v4.4) */}
+        <script dangerouslySetInnerHTML={{
+          __html: `
+            (function() {
+              try {
+                var KEY = 'mf_theoretical_expenses';
+                var SCHEMA_KEY = 'mf_theo_exp_schema';
+                if (localStorage.getItem(SCHEMA_KEY) !== 'v2') {
+                  localStorage.setItem(SCHEMA_KEY, 'v2');
+                  localStorage.removeItem(KEY);
                 }
               } catch(e) {}
             })();
