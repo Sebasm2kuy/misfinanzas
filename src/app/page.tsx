@@ -3832,13 +3832,52 @@ function PlanTab({ goals, onAddSavings, onToggleItem, onEditItemCost, onDeleteIt
                 <div className="space-y-2 text-xs sm:text-sm">
                   <div className="flex justify-between"><span className="text-muted-foreground">Pendiente por cobrar</span><span className="font-semibold">{formatCurrency(penP)}</span></div>
                   <div className="flex justify-between"><span className="text-muted-foreground">Dinero real ahorrado</span><span className="font-semibold">{formatCurrency(goal.savedAmount)}</span></div>
-                  <div className="flex justify-between font-bold"><span>Total teórico (real + pendiente)</span><span className={diff>=0?'text-emerald-600':'text-amber-600'}>{formatCurrency(teorico)}</span></div>
+                  <div className="flex justify-between font-bold"><span>Total teórico (real + pendiente)</span><span className={teorico>=0?'text-emerald-600':'text-amber-600'}>{formatCurrency(teorico)}</span></div>
+                  <Separator />
+                  <div className="flex justify-between"><span className="text-muted-foreground">Gastos teóricos ({ml} meses)</span><span className="font-semibold text-orange-600">- {formatCurrency(gastoTotalTheo)}</span></div>
+                  <div className="flex justify-between font-bold"><span>Disponible para fiesta</span><span className={disponible>=0?'text-emerald-600':'text-rose-600'}>{formatCurrency(disponible)}</span></div>
                   <div className="flex justify-between"><span className="text-muted-foreground">Costo total de la fiesta</span><span className="font-semibold">{formatCurrency(costo)}</span></div>
                   <div className={`flex justify-between rounded-lg px-3 py-2.5 mt-1 ${diff>=0?'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300':'bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300'}`}>
-                    <span className="font-semibold">Diferencia</span>
+                    <span className="font-semibold">Diferencia final</span>
                     <span className="font-bold text-sm">{diff>=0?'+':''}{formatCurrency(diff)}</span>
                   </div>
                   {diff < 0 && (<p className="text-[10px] text-muted-foreground text-center">Faltan {formatCurrency(Math.abs(diff))} para cubrir todos los gastos de la fiesta</p>)}
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="overflow-hidden border-orange-200 dark:border-orange-800">
+              <CardContent className="p-3 sm:p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2"><Receipt className="h-4 w-4 text-orange-600" /><span className="text-xs sm:text-sm font-semibold">Gastos Teóricos Mensuales</span></div>
+                  <span className="text-xs font-bold text-orange-600">{formatCurrency(gastoMensual)}/mes</span>
+                </div>
+                <div className="space-y-1.5">
+                  {tes.map(te => (
+                    <div key={te.id} className="flex items-center gap-2 text-xs sm:text-sm rounded-lg px-2.5 sm:px-3 py-2 bg-orange-50/50 dark:bg-orange-950/20 border border-orange-100 dark:border-orange-900/50">
+                      {te.isDaily ? (
+                        <div className="w-5 h-5 rounded bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center shrink-0"><span className="text-[9px] font-bold text-orange-600">{te.dailyAmount}</span></div>
+                      ) : (
+                        <Receipt className="h-4 w-4 text-orange-400 shrink-0" />
+                      )}
+                      <Input className="flex-1 min-w-0 h-7 text-xs bg-transparent border-transparent hover:border-border focus:border-orange-400 px-1" value={te.name} onChange={e=>saveTe(te.id,'name',e.target.value)} />
+                      <div className="flex items-center gap-1 shrink-0">
+                        {te.isDaily && <span className="text-[9px] text-muted-foreground">$</span>}
+                        <Input type="number" className="w-20 h-7 text-xs text-right font-bold bg-transparent border-transparent hover:border-border focus:border-orange-400 px-1" value={te.isDaily ? te.dailyAmount : te.amount} onChange={e=>saveTe(te.id,'amount',e.target.value)} />
+                        {te.isDaily && <span className="text-[9px] text-muted-foreground">x26</span>}
+                      </div>
+                      <button onClick={()=>delTe(te.id)} className="text-muted-foreground hover:text-destructive shrink-0 p-0.5"><Trash2 className="h-3 w-3" /></button>
+                    </div>
+                  ))}
+                </div>
+                <Button size="sm" variant="outline" className="w-full h-8 text-xs gap-1 border-orange-300 text-orange-600 hover:bg-orange-100 dark:border-orange-700" onClick={addTe}><Plus className="h-3 w-3" /> Agregar gasto</Button>
+                <Separator />
+                <div className="space-y-2 text-xs sm:text-sm">
+                  <div className="flex justify-between"><span className="text-muted-foreground">Total gastos/mes</span><span className="font-semibold text-orange-600">{formatCurrency(gastoMensual)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Gastos en {ml} meses</span><span className="font-semibold text-orange-600">{formatCurrency(gastoTotalTheo)}</span></div>
+                  <div className={`flex justify-between rounded-lg px-3 py-2.5 ${disponible>=0?'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300':'bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300'}`}>
+                    <span className="font-semibold">Disponible para fiesta</span>
+                    <span className="font-bold text-sm">{disponible>=0?'':''}{formatCurrency(disponible)}</span>
+                  </div>
                 </div>
               </CardContent>
             </Card>
